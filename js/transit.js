@@ -11,14 +11,33 @@ export function transitLevel(g, which) {
   const s = {
     title: T.name,
     objective: T.objective,
+    hud: true,
     brief: [
-      'Arrow keys / WASD - drift the ship',
-      'Collect pink star-motes for XP. Avoid the asteroids - 3 hits and the hull gives out.',
+      'Arrow keys / WASD - drift the ship up and down',
+      'Collect pink star-motes for XP. Avoid the asteroids - the hull takes 3 hits.',
+    ],
+    briefTopics: [
+      { label: 'CYU: Why are we flying through this?', lines: [
+        { who: 'CYU', text: 'Because the short way is full of rocks and the long way is full of radiation. I picked the rocks. You are welcome.' },
+        { who: 'CYU', text: 'Keep the nose level, captain. The EXON-1 handles like a cathedral with a grudge.' },
+      ] },
+      { label: 'CYU: What are the pink motes?', lines: [
+        { who: 'CYU', text: 'Ionised starlight. Beautiful, harmless, and worth a little experience if you scoop them up. The belt is full of them.' },
+        { who: 'YOU', text: 'Is scooping them safe?', choices: [
+          { label: 'Define "safe".', flag: 'belt_a' },
+          { label: 'I will take that as a yes.', flag: 'belt_b' },
+        ] },
+        { who: 'CYU', text: 'Safe is a spectrum. You are at the colourful end of it.' },
+      ] },
+      { label: 'CYU: How is the hull?', lines: [
+        { who: 'CYU', text: 'Three impacts from a bad day. The plating we find in the tower is the last piece. Try not to spend those three hits on the same asteroid.' },
+      ] },
     ],
     t: 0,
     px: 200, py: 270,
     vy: 0,
     hearts: g.save.hearts(),
+    maxHearts: g.save.hearts(),
     inv: 0,         // invulnerability timer
     rocks: [],
     motes: [],
@@ -150,11 +169,6 @@ export function transitLevel(g, which) {
       ctx.beginPath();
       ctx.moveTo(s.px - 20, s.py - 4); ctx.lineTo(s.px - 20 - fl, s.py); ctx.lineTo(s.px - 20, s.py + 4);
       ctx.closePath(); ctx.fill();
-
-      // hearts & timer
-      ctx.font = '16px ' + FONT;
-      ctx.fillStyle = PAL.rose;
-      ctx.fillText('♥'.repeat(Math.max(0, s.hearts)) + '·'.repeat(Math.max(0, 5 - s.hearts)), s.px - 4, 30);
     }
     ctx.restore();
 

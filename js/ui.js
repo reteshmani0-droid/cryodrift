@@ -131,40 +131,69 @@ export const Dialogue = {
 
 // ---------------- HUD ----------------
 export function drawHUD(ctx, g) {
-  // top strip
+  const st = g.state;
   ctx.fillStyle = PAL.bg0;
-  ctx.fillRect(0, 0, 960, 40);
+  ctx.fillRect(0, 0, 960, 44);
   ctx.strokeStyle = PAL.bg2;
-  ctx.beginPath(); ctx.moveTo(0, 40.5); ctx.lineTo(960, 40.5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, 44.5); ctx.lineTo(960, 44.5); ctx.stroke();
 
-  ctx.font = fontPx(15, 'bold');
-  ctx.fillStyle = PAL.hot;
-  ctx.fillText(g.state.title || '', 12, 25);
-
-  ctx.font = fontPx(13);
-  ctx.fillStyle = PAL.laver;
-  ctx.fillText(g.state.objective || '', 260, 25);
-
-  // xp / level, right side
-  const lvl = Save_level();
+  // title
   ctx.font = fontPx(14, 'bold');
+  ctx.fillStyle = PAL.hot;
+  ctx.fillText(st.title || '', 12, 19);
+
+  // hearts
+  const maxH = st.maxHearts || 3;
+  const hearts = typeof st.hearts === 'number' ? st.hearts : maxH;
+  for (let i = 0; i < maxH; i++) heart(ctx, 18 + i * 17, 28, 5, i < hearts);
+
+  // objective (trimmed to the free space)
+  ctx.font = fontPx(12);
+  ctx.fillStyle = PAL.laver;
+  let obj = st.objective || '';
+  const room = 430;
+  if (ctx.measureText(obj).width > room) {
+    while (obj.length > 4 && ctx.measureText(obj + '...').width > room) obj = obj.slice(0, -1);
+    obj += '...';
+  }
+  ctx.fillText(obj, 312, 19);
+
+  // shards + mute
+  ctx.textAlign = 'right';
+  ctx.font = fontPx(12, 'bold');
+  ctx.fillStyle = PAL.peach;
+  ctx.fillText('\u25C6 ' + (g.save.d.shards || 0), 950, 17);
+  ctx.font = fontPx(9);
+  if (Sfx.muted) { ctx.fillStyle = PAL.rose; ctx.fillText('MUTED (M)', 950, 40); }
+  else { ctx.fillStyle = PAL.purple; ctx.fillText('M', 950, 40); }
+
+  // level + xp
+  const lvl = Save_level();
+  ctx.font = fontPx(11, 'bold');
   ctx.fillStyle = PAL.peach;
   ctx.textAlign = 'right';
-  ctx.fillText(`LV ${lvl}`, 950, 17);
-  ctx.textAlign = 'left';
-  const span = (g.save.d.xp - g.save.levelFloor()) / 60;
-  bar(ctx, 806, 22, 144, 9, span, PAL.peach);
-  ctx.font = fontPx(10);
+  ctx.fillText('LV ' + lvl, 790, 39);
+  const span = Math.max(0, Math.min(1, (g.save.d.xp - g.save.levelFloor()) / 60));
+  bar(ctx, 800, 31, 96, 8, span, PAL.peach);
+  ctx.font = fontPx(9);
   ctx.fillStyle = PAL.laver;
-  ctx.textAlign = 'right';
-  ctx.fillText(`XP ${g.save.d.xp}`, 800, 17);
+  ctx.fillText('XP ' + g.save.d.xp, 790, 22);
   ctx.textAlign = 'left';
-  // mute hint / muted indicator (inside the canvas, top strip right)
-  ctx.font = fontPx(10);
-  ctx.textAlign = 'right';
-  if (Sfx.muted) { ctx.fillStyle = PAL.rose; ctx.fillText('MUTED (M)', 795, 38); }
-  else { ctx.fillStyle = PAL.purple; ctx.fillText('M', 795, 38); }
-  ctx.textAlign = 'left';
+}
+
+function heart(ctx, x, y, s, filled) {
+  ctx.beginPath();
+  ctx.moveTo(x, y + s * 0.3);
+  ctx.bezierCurveTo(x, y - s * 0.1, x - s, y - s * 0.1, x - s, y + s * 0.25);
+  ctx.bezierCurveTo(x - s, y + s * 0.65, x, y + s * 0.95, x, y + s * 1.1);
+  ctx.bezierCurveTo(x, y + s * 0.95, x + s, y + s * 0.65, x + s, y + s * 0.25);
+  ctx.bezierCurveTo(x + s, y - s * 0.1, x, y - s * 0.1, x, y + s * 0.3);
+  ctx.closePath();
+  ctx.fillStyle = filled ? PAL.rose : PAL.bg3;
+  ctx.fill();
+  ctx.strokeStyle = filled ? PAL.hot : PAL.purple;
+  ctx.lineWidth = 1;
+  ctx.stroke();
 }
 
 // late import to avoid cycle at module top

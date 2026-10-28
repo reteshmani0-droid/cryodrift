@@ -6,6 +6,7 @@ import { Save, completeLevel } from './save.js';
 import { Sfx } from './audio.js';
 import { Dialogue, drawHUD, wrapText, panel, bar, centerText, fontPx } from './ui.js';
 import { stealthLevel, mazeLevel, towerLevel } from './worlds.js';
+import { prologueLevel } from './ship.js';
 import { transitLevel } from './transit.js';
 
 const canvas = document.getElementById('c');
@@ -43,14 +44,16 @@ const g = {
 };
 
 // ---------------- level sequence ----------------
-const SEQ = ['intro', 'w1', 'transit1', 'story1', 'maze', 'transit2', 'story2', 'tower', 'ending'];
-const LEVEL_NAMES = { w1: 1, transit1: 2, maze: 4, transit2: 5, tower: 7 };
+const SEQ = ['prologue', 'w1', 'transit1', 'story1', 'maze', 'transit2', 'story2', 'tower', 'ending'];
+// progress index of each playable segment (index into SEQ); completeLevel(idx) unlocks idx+1
+const LEVEL_NAMES = { prologue: 0, w1: 1, transit1: 2, maze: 4, transit2: 5, tower: 7 };
 const LEVEL_LABEL = [
-  '1. The Whisper Wilds (stealth)',
-  '2. The First Belt (asteroids)',
-  "3. The Labyrinth of Moria (lantern maze)",
-  '4. The Crystal Belt (asteroids)',
-  "5. The Tower of Caesar (puzzles)",
+  '1. The EXON-1 (wake the ship)',
+  '2. The Whisper Wilds (stealth)',
+  '3. The First Belt (asteroids)',
+  '4. The Labyrinth of Moria (lantern)',
+  '5. The Crystal Belt (asteroids)',
+  '6. The Tower of Caesar (climb + riddle)',
 ];
 
 function after(stateName) {
@@ -59,11 +62,11 @@ function after(stateName) {
 }
 
 g.complete = (stateName) => {
-  if (LEVEL_NAMES[stateName]) completeLevel(LEVEL_NAMES[stateName]);
+  if (stateName in LEVEL_NAMES) completeLevel(LEVEL_NAMES[stateName]);
   Sfx.good();
   flash.t = 1.8;
   flash.text = 'SEGMENT COMPLETE';
-  g.nextState = after(stateName === 'transit1' ? 'transit1' : stateName);
+  g.nextState = after(stateName);
 };
 
 g.restartLevel = () => {
@@ -78,16 +81,27 @@ function buildLevel(name, opts = {}) {
     case 'credits': return creditsState();
     case 'select': return selectState();
     case 'launch': return launchState();
-    case 'story1': return storyState([
-      { who: 'CYU', text: 'Fuel acquired! And the soul of a lonely king is back where it belongs. Planet two was worth the detour - are you holding up in there?' },
-      { who: 'YOU', text: 'Still don\u2019t remember crashing. How long was I asleep?', choices: null },
-      { who: 'CYU', text: 'Longer than I thought you would mind. Anyway - a third signature waits past the crystal belt. A tower, of all things. High power readings at the top.' },
-    ], 'transit2', 'story1');
-    case 'intro': return introState(opts);
+    case 'story1': {
+      Save.d.abilities.doubleJump = true;
+      Save.persist();
+      return storyState([
+        { who: 'CYU', text: 'Fuel acquired, and the soul of a lonely king is back where it belongs. Two down, one to go.' },
+        { who: 'CYU', text: 'While you were down there I rebuilt the thruster boots. Press SPACE again in mid-air and you get a second jump. Try not to scream.' },
+        { who: 'YOU', text: 'You give me a jetpack and then tell me not to scream.' },
+        { who: 'CYU', text: 'A third signature waits past the crystal belt. A tower, of all things. High power readings at the top. Go on, captain. I will keep the porch light on.' },
+      ], 'transit2', 'story1');
+    }
+    case 'prologue': return prologueLevel(g);
     case 'w1': return stealthLevel(g);
     case 'transit1': return transitLevel(g, 1);
     case 'transit2': return transitLevel(g, 2);
     case 'maze': return mazeLevel(g);
+    case 'story2': return storyState([
+      { who: 'CYU', text: 'That was the crystal belt. The hull has opinions about it. Loud ones. But we are through, and the plating held.' },
+      { who: 'CYU', text: 'The third signature is a tower - older than the colony, and still drawing power. Hull plating at the crown, if the readings are honest.' },
+      { who: 'YOU', text: 'And if they are not?' },
+      { who: 'CYU', text: 'Then we have a very tall problem and a very short list of alternatives. Go on, captain. I will keep the channel open.' },
+    ], 'tower', 'story2');
     case 'tower': return towerLevel(g);
     case 'ending': return endingState();
   }
@@ -103,6 +117,7 @@ function setState(name, opts = {}) {
   // briefing gate
   if (g.state.brief && !opts.noBrief) {
     g.briefPending = true;
+    g.briefSel = (g.state.briefTopics || []).length; // start on BEGIN
   }
   Dialogue.active = false;
 }
@@ -110,7 +125,7 @@ function setState(name, opts = {}) {
 // ---------------- MENU ----------------
 function menuState() {
   const opts = [];
-  opts.push({ label: 'NEW DRIFT', act: () => { Save.wipe(); Save.load(); enter('intro'); } });
+  opts.push({ label: 'NEW DRIFT', act: () => { Save.wipe(); Save.load(); enter('prologue'); } });
   if (Save.hasContinue()) opts.push({ label: 'CONTINUE', act: () => enter('launch') });
   opts.push({ label: 'WORLDS / LEVELS', act: () => setState('select') });
   opts.push({ label: 'HOW TO PLAY', act: () => setState('howto') });
@@ -130,7 +145,7 @@ function menuState() {
     ctx.fillStyle = 'rgba(15,8,32,0.55)';
     ctx.fillRect(0, 70, 960, 440);
     centerText(ctx, 'CRYO DRIFT', 130, 64, PAL.cream);
-    centerText(ctx, 'a puzzle-RPG adrift in deep space', 160, 16, PAL.rose);
+    centerText(ctx, 'a puzzle-platformer adrift in deep space', 160, 16, PAL.rose);
     centerText(ctx, 'no weapons. no combat. only the dark between stars.', 184, 12, PAL.laver);
 
     ctx.textAlign = 'left';
@@ -142,11 +157,11 @@ function menuState() {
       ctx.fillText((selOn ? '> ' : '   ') + o.label, 390, y);
     });
     ctx.font = fontPx(11);
-    ctx.fillStyle = PAL.purple;
+    ctx.fillStyle = 'rgba(15,8,32,0.78)';
+    ctx.fillRect(0, 510, 960, 30);
+    ctx.fillStyle = PAL.laver;
     ctx.fillText('W/S or arrows: choose    SPACE: confirm    M: mute', 350, 528);
     ctx.textAlign = 'left';
-
-    Dialogue.draw(ctx);
   };
   s.cleanup = null;
   return s;
@@ -171,7 +186,7 @@ function selectState() {
   let sel = 0;
   const s = { title: 'levels' };
   // sequence position of each select row (must match jump() below)
-  const routeIdx = { 1: 1, 2: 2, 3: 3, 4: 5, 5: 6 };
+  const routeIdx = { 1: 0, 2: 1, 3: 2, 4: 4, 5: 5, 6: 7 };
   s.update = function () {
     const once = g.consumeKeys();
     if (once['Escape']) { setState('menu'); return; }
@@ -197,16 +212,15 @@ function selectState() {
     });
     ctx.font = fontPx(12);
     ctx.fillStyle = PAL.laver;
-    ctx.fillText(`XP ${Save.d.xp} - LV ${Save.level()} - deaths ${Save.d.deaths} - time aloft ${fmtTime(Save.d.time)}`, 300, 420);
-    ctx.fillText('SPACE: jump to world   ESC: back', 300, 445);
-    Dialogue.draw(ctx);
+    ctx.fillText(`XP ${Save.d.xp} - LV ${Save.level()} - deaths ${Save.d.deaths} - time aloft ${fmtTime(Save.d.time)}`, 300, 452);
+    ctx.fillText('SPACE: jump to world   ESC: back', 300, 478);
   };
   return s;
 
   function jump(n) {
     // maps level select rows to sequence entry points
-    const routes = { 1: 'w1', 2: 'transit1', 3: 'story1', 4: 'transit2', 5: 'story2' };
-    const routeIdx = { 1: 1, 2: 2, 3: 3, 4: 5, 5: 6 }; // sequence position of each row
+    const routes = { 1: 'prologue', 2: 'w1', 3: 'transit1', 4: 'maze', 5: 'transit2', 6: 'tower' };
+    const routeIdx = { 1: 0, 2: 1, 3: 2, 4: 4, 5: 5, 6: 7 }; // sequence position of each row
     Save.load();
     setState(routes[n]);
     // mark reachable sequence context
@@ -224,13 +238,15 @@ function fmtTime(sec) {
 function howToState() {
   const s = { title: 'howto' };
   const lines = [
-    ['THE STORY', 'You crash-landed on the wilds of Exxon, 142 million lightyears from Earth. Your ship is broken; your cryopod brain is foggy. Three worlds hold what you need: energy cells, fuel, hull plating. Your companion CYU keeps you company. She reads a little... strange.'],
-    ['MOVE', 'WASD or Arrow keys. Hold SHIFT to sprint (stealth world) - watching your stamina.'],
-    ['WORLD 1 - WHISPER WILDS', 'Sneak. Watchers see in cones. Hide inside glowing ferns; break line of sight behind rocks and brambles. Grab 3 cells, reach the exit pad. If suspicion fills, the wilds reset.'],
-    ['BETWEEN WORLDS', 'Drift the ship through asteroid belts: arrows to move, collect pink motes for XP.'],
-    ['WORLD 2 - LABYRINTH OF MORIA', 'A dark maze. Your lantern shapes the light and burns oil. Find Moria\u2019s soul AND the fuel, then the portal. Oil drops refill. Shadows roam: do not touch them.'],
-    ['WORLD 3 - TOWER OF CAESAR', 'Puzzle rooms only: lever order, counterweights (push crates onto plates), then Caesar\u2019s riddle. SPACE is interact. R restarts the crate room.'],
-    ['RPG PROGRESSION', 'Everything you do earns XP. Levels raise stamina, lantern oil, sprint speed and hearts. No combat anywhere: you solve, you sneak, you survive.'],
+    ['THE STORY', 'The EXON-1 is wrecked on planet Exxon, 142 million lightyears from home. You wake in the cryo bay with a ship AI named CYU for company, and three worlds between you and the way home.'],
+    ['MOVE (PLATFORMER)', 'WASD or Arrow keys to run. SPACE / W / UP to jump, and again in mid-air after the first belt for a double jump. SHIFT to sprint where stamina allows. E or ENTER to talk, read and use.'],
+    ['THE BRIEFING', 'Every segment opens with a briefing. W/S picks a topic to ask CYU about, or BEGIN SEGMENT to start. The topics are optional, but the story lives in them.'],
+    ['THE EXON-1 (PROLOGUE)', 'Explore the wrecked ship: check your cryo pod, talk to CYU at her terminal, reboot the engine core, then reach the blast door.'],
+    ['WORLD 1 - WHISPER WILDS', 'A stealth platformer. Watchers sweep cones of light; glowing ferns hide you. Grab 3 energy cells off the high ledges, then reach the exit pad at the far right.'],
+    ['TRANSIT - THE BELTS', 'Fly the EXON-1 between worlds. Up/down drifts the ship, pink motes give XP, asteroids take a heart each. Three hits and the hull gives out.'],
+    ['WORLD 2 - LABYRINTH OF MORIA', 'A lantern platformer. Oil burns down and your light shrinks. Find Moria\u2019s soul and the fuel canister, avoid the shadows, then carry both to the portal.'],
+    ['WORLD 3 - TOWER OF CAESAR', 'A vertical climb. Cross each floor\u2019s hazard, pull the seal lever on its far right, then answer Caesar\u2019s riddle at the summit to open the gate.'],
+    ['RPG PROGRESSION', 'Everything earns XP. Levels raise hearts, stamina, lantern oil and sprint speed. Data shards hide all over the game. No weapons, no combat: sneak, climb, solve.'],
   ];
   let scroll = 0;
   s.update = function () {
@@ -338,64 +354,8 @@ function launchState() {
 }
 
 function resumeFromSave() {
-  // unlocked counts "next new segment": intro=0, w1=1, transit1=2, ... tower=7, ending=8
-  const start = ['intro', 'w1', 'transit1', 'story1', 'maze', 'transit2', 'story2', 'tower', 'ending'];
-  const idx = Math.min(Save.d.unlocked, start.length - 1);
-  setState(start[idx]);
-}
-
-// ---------------- INTRO CINEMATIC ----------------
-function introState() {
-  const s = { title: 'intro' };
-  let done = false;
-  s.update = function () {
-    const once = g.consumeKeys();
-    if (Dialogue.active) { menuDialogueUpdate(once, 0); return; }
-    if (!done) {
-      done = true;
-      const opening = Save.hasContinue() && Save.d.seen.intro ? 'skip' : 'first';
-      const lines = opening === 'first' ? [
-        { who: 'CYU', text: 'Wake up. Wake up! Oh good - your cryopod still has a heartbeat in it. Slow one, but a heartbeat.' },
-        { who: 'YOU', text: '...Where are we? Last thing I remember is boarding the EXON-1 for Kepler-something. Why is everything so purple?', choices: null },
-        { who: 'CYU', text: 'Because the starlight out here is old and tired. We crashed on this backwater planet called Exxon. Wreckage everywhere. 142 million lightyears from Earth - we are 12 million short of our destination.' },
-        { who: 'CYU', text: 'I scanned the stellar neighbourhood while you slept: three worlds nearby. Cells for the reactor, fuel for the burn, plating for the hull. We repair, we fly home. Straightforward enough.' },
-        { who: 'YOU', text: 'Straightforward. Sure. Ask around first?', choices: null },
-        { who: 'YOU', text: 'Fine. Let\u2019s gather supplies and fix this ship.', choices: null },
-      ] : [
-        { who: 'CYU', text: 'Back for another drift? The wilds are still out there. Types of same, monsters and all.' },
-      ];
-      g.dialogue(lines, () => setState('w1'));
-    }
-  };
-  s.draw = (ctx) => {
-    drawTitleBg(ctx, performance.now() / 1000);
-    // crashed wreck silhouette
-    ctx.fillStyle = PAL.bg3;
-    ctx.globalAlpha = 0.9;
-    ctx.beginPath();
-    ctx.moveTo(600, 400);
-    ctx.lineTo(780, 360);
-    ctx.lineTo(830, 420);
-    ctx.lineTo(640, 445);
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = PAL.ink;
-    ctx.fillRect(690, 350, 60, 46);
-    ctx.fillStyle = PAL.bg2;
-    ctx.fillRect(660, 396, 220, 12);
-    // smoke wisp
-    for (let i = 0; i < 6; i++) {
-      ctx.globalAlpha = 0.08;
-      ctx.fillStyle = PAL.laver;
-      const yy = 380 - ((performance.now() / 30 + i * 60) % 260);
-      ctx.beginPath(); ctx.arc(730 + Math.sin(i) * 20, yy, 10 + i * 3, 0, 7); ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-    centerText(ctx, 'EXXON - CRASH SITE - 142 MILLION LIGHTYEARS FROM HOME', 480, 14, PAL.rose);
-    Dialogue.draw(ctx);
-  };
-  return s;
+  const idx = Math.min(Save.d.unlocked, SEQ.length - 1);
+  setState(SEQ[idx]);
 }
 
 // ---------------- STORY BEATS ----------------
@@ -417,7 +377,6 @@ function storyState(lines, next, seenKey) {
   s.draw = (ctx) => {
     drawTitleBg(ctx, performance.now() / 1000);
     centerText(ctx, 'ADRIFT BETWEEN WORLDS', 486, 13, PAL.laver);
-    Dialogue.draw(ctx);
   };
   return s;
 }
@@ -486,6 +445,7 @@ function endingState() {
       const stats = [
         `time aloft    ${fmtTime(Save.d.time)}`,
         `XP earned     ${Save.d.xp}   -  level ${Save.level()}`,
+        `data shards   ${Save.d.shards || 0}`,
         `resets taken  ${Save.d.deaths}`,
         `captain\u2019s word   ${Save.d.choices.mercy === 'stay' ? 'MERCY: repaired the little worlds' : 'AID: carried help home to Exxon'}`,
       ];
@@ -494,7 +454,6 @@ function endingState() {
       ctx.textAlign = 'left';
       centerText(ctx, 'SPACE - credits/menu', 520, 13, PAL.laver);
     }
-    Dialogue.draw(ctx);
   };
   return s;
 }
@@ -507,7 +466,6 @@ function drawPlainBg() {
   ctx.fillStyle = PAL.bg2;
   ctx.fillRect(0, 500, 960, 40);
   ctx.globalAlpha = 1;
-  Dialogue.draw(ctx);
 }
 
 function drawTitleBg(c, t) {
@@ -572,24 +530,36 @@ function drawStars2(c, t) {
 
 // ---------------- dialogue flags (ending choice) ----------------
 function applyDialogueFlag(flag) {
+  if (!flag) return;
   if (flag === 'aid' || flag === 'stay') {
     Save.d.choices.mercy = flag;
     Save.persist();
   }
+  if (g.onChoice) g.onChoice(flag);
 }
 
 // ---------------- loop ----------------
 let last = performance.now();
-function loop(now) {
+function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   const paused = g.paused;
   const briefing = g.briefPending && g.state && g.state.brief;
 
-  if (briefing) {
-    // dismiss the briefing with SPACE/Enter, then the segment begins
-    const once = g.consumeKeys();
-    if (once[' '] || once['Enter']) g.briefPending = false;
+  if (briefing && !paused) {
+    // briefing talk menu: topics for CYU, or begin the segment
+    const topics = g.state.briefTopics || [];
+    const rows = topics.length + 1;
+    if (g.briefSel == null || g.briefSel >= rows) g.briefSel = 0;
+    if (!Dialogue.active) {
+      const once = g.consumeKeys();
+      if (once['ArrowDown'] || once['s']) { g.briefSel = (g.briefSel + 1) % rows; Sfx.blip(); }
+      if (once['ArrowUp'] || once['w']) { g.briefSel = (g.briefSel + rows - 1) % rows; Sfx.blip(); }
+      if (once[' '] || once['Enter'] || once['e']) {
+        if (g.briefSel < topics.length) g.dialogue(topics[g.briefSel].lines);
+        else g.briefPending = false;
+      }
+    }
   }
 
   if (!paused && !briefing) {
@@ -615,40 +585,72 @@ function loop(now) {
 
   // render
   if (g.state) g.state.draw(ctx);
-  if (g.state && g.state.title && g.stateName && LEVEL_NAMES[g.stateName] ) {
+  if (g.state && g.state.hud && !g.briefPending) {
     drawHUD(ctx, g);
   }
 
   if (briefing) drawBriefing(ctx);
+  if (Dialogue.active && !paused) Dialogue.draw(ctx);
   if (paused) drawPause(ctx);
   if (flash.t > 0) {
     ctx.fillStyle = `rgba(255,113,206,${0.18 * Math.min(1, flash.t)})`;
     ctx.fillRect(0, 0, 960, 540);
     centerText(ctx, flash.text, 300, 30, PAL.cream);
   }
+}
 
+// A throw in one frame must never stop the game: log it and keep the loop alive.
+function loop(now) {
+  try {
+    frame(now);
+  } catch (err) {
+    console.error('CRYO DRIFT frame error:', err);
+  }
   requestAnimationFrame(loop);
 }
 
 function drawBriefing(c) {
-  c.fillStyle = 'rgba(15,8,32,0.82)';
+  c.fillStyle = 'rgba(15,8,32,0.90)';
   c.fillRect(0, 40, 960, 500);
-  centerText(c, g.state.title || '', 116, 26, PAL.hot);
-  ctx.textAlign = 'left';
-  c.font = fontPx(15);
+  centerText(c, g.state.title || '', 96, 26, PAL.hot);
+  c.textAlign = 'left';
+  c.font = fontPx(14, 'bold');
   c.fillStyle = PAL.peach;
-  c.fillText('OBJECTIVE: ' + (g.state.objective || ''), 90, 160);
-  let y = 200;
-  c.font = fontPx(15);
+  c.fillText('OBJECTIVE: ' + (g.state.objective || ''), 70, 138);
+  let y = 172;
+  c.font = fontPx(13);
   c.fillStyle = PAL.cream;
   for (const line of g.state.brief || []) {
-    wrapText(c, line, 800).forEach((ln, i) => { c.fillText(ln, 100, y + i * 22); });
-    y += (wrapText(c, line, 800).length) * 22 + 12;
+    const rows = wrapText(c, line, 820);
+    rows.forEach((ln, i) => c.fillText(ln, 78, y + i * 19));
+    y += rows.length * 19 + 8;
   }
-  c.font = fontPx(14, 'bold');
-  c.fillStyle = PAL.rose;
-  c.fillText('SPACE - begin', 96, 520);
-  ctx.textAlign = 'left';
+
+  // talk menu: CYU topics + begin
+  const topics = g.state.briefTopics || [];
+  const rowY = 330;
+  c.font = fontPx(11, 'bold');
+  c.fillStyle = PAL.laver;
+  c.fillText('TALK TO CYU   -   W/S choose   -   SPACE confirm', 78, rowY - 18);
+
+  const rows = topics.length + 1;
+  if (g.briefSel == null || g.briefSel >= rows) g.briefSel = 0;
+  for (let i = 0; i < rows; i++) {
+    const selOn = i === g.briefSel;
+    const yy = rowY + i * 28;
+    if (yy > 512) break;
+    if (selOn) {
+      c.fillStyle = 'rgba(255,113,206,0.12)';
+      c.fillRect(72, yy - 17, 816, 25);
+      c.strokeStyle = PAL.purple;
+      c.strokeRect(72.5, yy - 16.5, 815, 24);
+    }
+    c.font = fontPx(selOn ? 15 : 13, selOn ? 'bold' : '');
+    c.fillStyle = selOn ? PAL.hot : (i === topics.length ? PAL.cream : PAL.laver);
+    const label = i === topics.length ? '\u25B6  BEGIN SEGMENT' : topics[i].label;
+    c.fillText((selOn ? '> ' : '  ') + label, 84, yy);
+  }
+  c.textAlign = 'left';
 }
 
 function drawPause(c) {
@@ -669,7 +671,7 @@ addEventListener('keydown', (e) => {
   g.keydown(e);
   let unpaused = false;
   if (e.key === 'Escape') {
-    if (g.stateName && LEVEL_NAMES[g.stateName] && Dialogue && !Dialogue.active) { g.paused = !g.paused; unpaused = !g.paused; }
+    if (g.stateName && (g.stateName in LEVEL_NAMES) && Dialogue && !Dialogue.active) { g.paused = !g.paused; unpaused = !g.paused; }
     else if (g.paused) { g.paused = false; unpaused = true; }
   }
   if (g.paused) {
@@ -690,17 +692,18 @@ function fit() {
 addEventListener('resize', fit);
 fit();
 
-// URL shortcut for testing: ?lvl=N jumps to level N (1..5)
+// URL shortcut for testing: ?lvl=N jumps to a segment (0..5)
 function debugJump() {
   const p = new URLSearchParams(location.search).get('lvl');
-  if (p) {
-    const n = Math.max(1, Math.min(5, parseInt(p, 10)));
-    const routes = { 1: 'w1', 2: 'transit1', 3: 'maze', 4: 'transit2', 5: 'tower' };
-    const routeIdx = { 1: 1, 2: 2, 3: 4, 4: 5, 5: 7 }; // sequence position of each level
+  if (p !== null && p !== '') {
+    const n = Math.max(0, Math.min(5, parseInt(p, 10) || 0));
+    const routes = { 0: 'prologue', 1: 'w1', 2: 'transit1', 3: 'maze', 4: 'transit2', 5: 'tower' };
+    const routeIdx = { 0: 0, 1: 1, 2: 2, 3: 4, 4: 5, 5: 7 };
     Save.load();
     Save.d.unlocked = Math.max(Save.d.unlocked, routeIdx[n]);
+    if (n >= 5) Save.d.abilities.doubleJump = true;
     Save.persist();
-    setState(routes[n], { noBrief: true });
+    setState(routes[n], { noBrief: false });
     return true;
   }
   return false;
@@ -712,4 +715,4 @@ if (!debugJump()) setState('menu');
 requestAnimationFrame(loop);
 
 // debug/testing hook (inspectable in the console)
-window.__cryo = { g, setState, Dialogue };
+window.__cryo = { g, setState, Dialogue, loop, frame };

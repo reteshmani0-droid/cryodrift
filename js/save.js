@@ -7,10 +7,12 @@ export const Save = {
 
   fresh() {
     return {
-      unlocked: 1,        // highest level index (1-based) the player can jump to
+      unlocked: 0,        // next segment to resume (index into the level sequence)
       xp: 0,
       deaths: 0,
       time: 0,            // seconds played in levels
+      shards: 0,          // data shards found across the game
+      abilities: { doubleJump: false },
       choices: {},        // branching dialogue results
       seen: {},           // one-time dialogue flags
       cryo: true,
@@ -24,6 +26,9 @@ export const Save = {
     } catch (e) {
       this.d = this.fresh();
     }
+    // saves from older versions may be missing the newer fields
+    if (!this.d.abilities) this.d.abilities = { doubleJump: false };
+    if (typeof this.d.shards !== 'number') this.d.shards = 0;
     return this.d;
   },
 
@@ -37,7 +42,7 @@ export const Save = {
   },
 
   hasContinue() {
-    return this.d && (this.d.unlocked > 1 || this.d.xp > 0);
+    return this.d && (this.d.unlocked > 0 || this.d.xp > 0);
   },
 
   addXP(n) {
@@ -52,7 +57,7 @@ export const Save = {
   staminaMax() { return Math.round(100 * (1 + 0.15 * (this.level() - 1))); },
   sprintMult() { return 1 + 0.06 * (this.level() - 1); },
   oilMax()     { return Math.round(80 * (1 + 0.12 * (this.level() - 1))); },
-  hearts()     { return 3 + (this.level() >= 4 ? 1 : 0) + (this.level() >= 7 ? 1 : 0); },
+  hearts()     { return 3 + (this.level() >= 3 ? 1 : 0) + (this.level() >= 5 ? 1 : 0) + (this.level() >= 7 ? 1 : 0); },
 };
 
 export function completeLevel(idx) {

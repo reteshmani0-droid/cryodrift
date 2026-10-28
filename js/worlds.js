@@ -1,958 +1,1087 @@
-// CRYO DRIFT - the three worlds: stealth wilds, lantern labyrinth, Caesar's tower.
-// Puzzle progression only - no weapons, no combat (TSA rules: E for Everyone).
+// CRYO DRIFT - the three worlds, rebuilt as side-scrolling platformers.
+// World 1 stealth field, World 2 lantern labyrinth, World 3 vertical tower.
+// No combat: sneak, climb, solve.
 
 import { PAL, FONT } from './palette.js';
 import { Sfx } from './audio.js';
-import { wrapText, Dialogue } from './ui.js';
+import { Dialogue } from './ui.js';
+import { WorldGrid, TS, makeMover } from './platform.js';
+import { makePlatformLevel } from './scene.js';
 
 function f(px, bold = '') { return `${bold} ${px}px ${FONT}`.trim(); }
+const T = (n) => n * TS;
 
-// ============================ WORLD 1: STEALTH ============================
-const MAPW = 30, MAPH = 15, TS = 32;
-const MAPROWS = [
-  '##############################',
-  '#............#..........b....#',
-  '#....b....b..#...######b..b..#',
-  '#..c.#####..b#.........b..c..#',
-  '#....#...#....b..###..b#####.#',
-  '#..f.#...b......#...b.....b..#',
-  '#....#####..###.#.###.####...#',
-  '#.......b.....#.....#.....b..#',
-  '#..###.####...#..f..######...#',
-  '#..#.....#....#####......#c..#',
-  '#..#..f..#..........b....#...#',
-  '#..#####.....####..b..####...#',
-  '#.....b....E.#..b..f.#f......#',
-  '#..f......P..#.....b......b..#',
-  '##############################',
-];
-
+// ================================================================ WORLD 1
+// THE WHISPER WILDS - platformer stealth. Three cells, watchers, ferns.
 export function stealthLevel(g) {
-  // parse map
-  const solid = [], bramble = [], ferns = [], cells = [];
-  let start = { x: 2, y: 2 }, exit = { x: 2, y: 12 };
-  for (let y = 0; y < MAPH; y++) {
-    const row = (MAPROWS[y] || '').padEnd(MAPW, '#');
-    for (let x = 0; x < MAPW; x++) {
-      const c = row[x];
-      if (c === '#') solid.push({ x, y });
-      else if (c === 'b') bramble.push({ x, y });
-      else if (c === 'f') ferns.push({ x, y });
-      else if (c === 'c') cells.push({ tx: x, ty: y, got: false });
-      else if (c === 'P') start = { x, y };
-      else if (c === 'E') exit = { x, y };
-    }
-  }
+  const world = new WorldGrid(120, 26);
+  // forest floor with chasms
+  world.rect(0, 20, 20, 6);
+  world.rect(23, 20, 22, 6);
+  world.rect(48, 20, 24, 6);
+  world.rect(75, 20, 45, 6);
 
-  const watchers = [
-    { ax: 2, ay: 5, bx: 9, by: 5, t: 0, dir: 1, pause: 0, susp: 0, alert: 0 },
-    { ax: 18, ay: 10, bx: 27, by: 10, t: 0, dir: 1, pause: 0, susp: 0, alert: 0 },
-    { ax: 21, ay: 3, bx: 27, by: 3, t: 0, dir: 1, pause: 0, susp: 0, alert: 0 },
+  // cell routes (steps every 2 rows, all single-jump reachable)
+  world.rect(3, 18, 4, 1);
+  world.rect(7, 18, 3, 1);   // shard shelf
+  world.rect(11, 18, 3, 1);
+  world.rect(14, 16, 4, 1);
+  world.rect(17, 14, 4, 1);  // cell 1 above
+  world.rect(24, 18, 3, 1);
+  world.rect(27, 16, 4, 1);
+  world.rect(30, 14, 4, 1);  // shard 2
+  world.rect(51, 18, 3, 1);
+  world.rect(54, 16, 4, 1);
+  world.rect(57, 14, 4, 1);  // cell 2 above
+  world.rect(63, 18, 3, 1);
+  world.rect(66, 16, 4, 1);
+  world.rect(69, 14, 3, 1);  // shard 3 above
+  world.rect(78, 18, 3, 1);
+  world.rect(81, 16, 4, 1);
+  world.rect(84, 14, 4, 1);  // cell 3 above
+  world.rect(95, 18, 3, 1);
+  world.rect(98, 16, 4, 1);  // shard 4 above
+  // crumble ledges over the third chasm
+  world.rect(72, 18, 2, 1, 4);
+  world.rect(74, 18, 2, 1, 4);
+  // spikes on the ground
+  world.set(60, 19, 3); world.set(61, 19, 3);
+  world.set(90, 19, 3); world.set(91, 19, 3);
+
+  const ferns = [
+    { x: T(5) + 16, y: T(20) - 12 }, { x: T(25) + 16, y: T(20) - 12 },
+    { x: T(34) + 16, y: T(20) - 12 }, { x: T(52) + 16, y: T(20) - 12 },
+    { x: T(63) + 10, y: T(18) - 14 }, { x: T(80) + 16, y: T(20) - 12 },
+    { x: T(96) + 10, y: T(18) - 14 }, { x: T(106) + 16, y: T(20) - 12 },
+    { x: T(113) + 16, y: T(20) - 12 },
   ];
 
-  const s = {
+  const watchers = [
+    mkWatch(T(2), T(13), T(15) + 10, 0.16, 0.0),
+    mkWatch(T(25), T(41), T(14), 0.13, 0.35),
+    mkWatch(T(49), T(67), T(13), 0.11, 0.7),
+    mkWatch(T(76), T(93), T(15), 0.12, 0.2),
+    mkWatch(T(96), T(113), T(12), 0.1, 0.55),
+  ];
+
+  const goal = { x: T(116), y: T(20), active: false, label: 'EXIT' };
+
+  const s = makePlatformLevel(g, {
     title: 'WORLD 1 - THE WHISPER WILDS',
     objective: 'Cells: 0/3 - stay out of their sight',
     brief: [
-      'Move: WASD / Arrows   -   Sprint: hold SHIFT (uses stamina)',
-      'Gather 3 energy cells, then reach the glowing exit pad.',
-      'Glowing ferns hide you. Brambles block their view but slow you. If the suspicion eye fills, you are seen.',
+      'WASD / Arrows - run   -   SPACE - jump   -   SHIFT - sprint (stamina)   -   E - nothing here, RUN',
+      'Collect 3 energy cells high in the wilds, then reach the exit pad at the far right.',
+      'Glowing ferns hide you from watcher lights. Brambles and rocks block sight. Watchers that see you fill an eye - then the wilds reset you.',
     ],
-    px: (start.x + 0.5) * TS, py: (start.y + 0.5) * TS,
-    st: g.save.staminaMax(),
-    stMax: g.save.staminaMax(),
-    t: 0,
-    caught: 0,
-    gotCount: 0,
-  };
-
-  const solidAt = (tx, ty) =>
-    tx < 0 || ty < 0 || tx >= MAPW || ty >= MAPH ||
-    solid.some((r) => r.x === tx && r.y === ty);
-
-  function collide(px, py, r) {
-    // circle vs solid tiles & brambles
-    for (let ty = Math.floor((py - r) / TS); ty <= Math.floor((py + r) / TS); ty++) {
-      for (let tx = Math.floor((px - r) / TS); tx <= Math.floor((px + r) / TS); tx++) {
-        if (solidAt(tx, ty)) {
-          const cx = Math.max(tx * TS, Math.min(px, tx * TS + TS));
-          const cy = Math.max(ty * TS, Math.min(py, ty * TS + TS));
-          if ((px - cx) ** 2 + (py - cy) ** 2 < r * r) return true;
-        }
+    briefTopics: [
+      { label: 'CYU: What are watchers?', lines: [
+        { who: 'CYU', text: 'Big pale things with lamps for eyes. They are not hunting you - they are curious. Their curiosity has killed several of my drones.' },
+        { who: 'CYU', text: 'Stand in a glowing fern and their lamps slide right over you. Try not to be interesting.' },
+      ] },
+      { label: 'CYU: How do I climb?', lines: [
+        { who: 'CYU', text: 'Jump. If your feet are on something and your head is not, you will clear two tiles. Three, if you sprint.' },
+        { who: 'CYU', text: 'The cells are stacked on ledges just out of reach of the ground. That is not an accident. The planet likes to be difficult.' },
+      ] },
+      { label: 'CYU: Any shortcuts?', lines: [
+        { who: 'CYU', text: 'The chasms are three tiles wide. You can jump them at a run. I have done the math four times.' },
+        { who: 'YOU', text: 'Four times?', choices: [
+          { label: 'Reassuring.', flag: 'w1a' },
+          { label: 'That is not reassuring.', flag: 'w1b' },
+        ] },
+        { who: 'CYU', text: 'Noted. I will do it a fifth time while you fall.' },
+      ] },
+    ],
+    world,
+    theme: {
+      block: '#241536', inner: '#1a0f2a', top: '#5d3a86', speck: '#3f2660',
+      plat: '#3f2660', platTop: '#8657b8', spike: '#b490d6',
+      crumble: '#3f2660', crack: '#8657b8',
+    },
+    spawn: { x: T(2) + 16, y: T(20) },
+    hearts: g.save.hearts(),
+    stamina: g.save.staminaMax(),
+    sprint: true,
+    goal,
+    bg: (ctx, st) => drawWildsBg(ctx, st),
+    drawMid: (ctx, st) => {
+      for (const fn of ferns) drawFern(ctx, fn, st);
+      for (const w of watchers) drawWatcher(ctx, w, st);
+    },
+    onUpdate: (st, dt) => {
+      st.goal.active = st.cells >= 3;
+      st.objective = `Cells: ${st.cells}/3 - ${st.goal.active ? 'reach the exit, right' : 'stay out of their sight'}`;
+      if (st.cells >= 3 && !st.exitReady) { st.exitReady = true; st.flash('ALL CELLS - GET TO THE EXIT'); }
+      updateWatchers(st, watchers, ferns, dt, (msg) => { st.damage(1); st.flash(msg); });
+    },
+    onGoal: (st) => {
+      if (st.done) return;
+      st.done = true;
+      g.dialogue([
+        { who: 'CYU', text: 'Three cells, and you are still breathing. I am upgrading my estimate of you, captain. The reactor will take these nicely.' },
+        { who: 'CYU', text: 'The first belt is on the other side of the ridge. Try to keep the ship in one piece on the way through.' },
+      ], () => { g.complete('w1'); });
+    },
+    drawAbove: (ctx, st) => {
+      // suspicion eye
+      const m = Math.max(0, ...watchers.map((w) => w.susp));
+      if (m > 0.02) {
+        const x = 480, y = 74;
+        ctx.fillStyle = 'rgba(15,8,32,0.7)';
+        ctx.beginPath(); ctx.arc(x, y, 20, 0, 7); ctx.fill();
+        ctx.strokeStyle = PAL.rose; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, y, 20, -Math.PI / 2, -Math.PI / 2 + m * Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = PAL.rose;
+        ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.font = f(10, 'bold'); ctx.fillStyle = PAL.rose; ctx.textAlign = 'center';
+        ctx.fillText('SEEN', x, y + 34);
+        ctx.textAlign = 'left';
       }
-    }
-    const bx = Math.floor(px / TS), by = Math.floor(py / TS);
-    if (bramble.some((b) => b.x === bx && b.y === by)) return true; // brambles are walls too
-    return false;
-  }
-
-  function inFern(px, py) {
-    return ferns.some((f) => {
-      const dx = px - (f.x + 0.5) * TS, dy = py - (f.y + 0.5) * TS;
-      return dx * dx + dy * dy < 20 * 20;
-    });
-  }
-
-  function losClear(x1, y1, x2, y2) {
-    const d = Math.hypot(x2 - x1, y2 - y1);
-    const steps = Math.ceil(d / 10);
-    for (let i = 1; i < steps; i++) {
-      const x = x1 + ((x2 - x1) * i) / steps, y = y1 + ((y2 - y1) * i) / steps;
-      const tx = Math.floor(x / TS), ty = Math.floor(y / TS);
-      if (solidAt(tx, ty)) return false;
-      if (bramble.some((b) => b.x === tx && b.y === ty)) return false;
-    }
-    return true;
-  }
-
-  s.update = (dt) => {
-    s.t += dt;
-    g.save.d.time += dt;
-    if (s.caught > 0) { s.caught -= dt; if (s.caught <= 0) resetPositions(); return; }
-
-    // player movement
-    const k = g.keys, sp = 132;
-    let dx = (k['ArrowRight'] || k['d'] ? 1 : 0) - (k['ArrowLeft'] || k['a'] ? 1 : 0);
-    let dy = (k['ArrowDown'] || k['s'] ? 1 : 0) - (k['ArrowUp'] || k['w'] ? 1 : 0);
-    const moving = dx || dy;
-    if (moving) { dx /= Math.hypot(dx, dy); dy /= Math.hypot(dx, dy); }
-    const sprinting = (k['Shift'] || k['shift']) && moving && s.st > 1;
-    s.sprinting = sprinting;
-    const speed = sprinting ? sp * 1.75 * g.save.sprintMult() : sp;
-    if (sprinting) s.st = Math.max(0, s.st - 30 * dt);
-    else s.st = Math.min(s.stMax, s.st + (moving ? 16 : 34) * dt);
-
-    let nx = s.px + dx * speed * dt, ny = s.py + dy * speed * dt;
-    if (!collide(nx, s.py, 9)) s.px = nx;
-    if (!collide(s.px, ny, 9)) s.py = ny;
-
-    // watchers
-    for (const w of watchers) {
-      if (w.pause > 0) { w.pause -= dt; }
-      else {
-        w.t += dt * 0.24;
-        if (w.t >= 1) { w.t = 1; w.dir = -1; w.pause = 1.4; }
-        if (w.t <= 0) { w.t = 0; w.dir = 1; w.pause = 1.4; }
+    },
+    onOverlay: (ctx, st) => {
+      if (st.stMax) {
+        const w = 170, x = 12, y = 500;
+        ctx.fillStyle = PAL.ink; ctx.fillRect(x, y, w, 9);
+        ctx.fillStyle = st.st < st.stMax * 0.25 ? PAL.rose : PAL.laver;
+        ctx.fillRect(x, y, w * Math.max(0, st.st / st.stMax), 9);
+        ctx.strokeStyle = PAL.purple; ctx.strokeRect(x - 0.5, y - 0.5, w + 1, 10);
+        ctx.font = f(10); ctx.fillStyle = PAL.laver;
+        ctx.fillText('STAMINA  (SHIFT)', x + 2, y + 22);
       }
-      w.x = (w.ax + (w.bx - w.ax) * w.t + 0.5) * TS;
-      w.y = (w.ay + (w.by - w.ay) * w.t + 0.5) * TS;
-      w.fx = (w.bx - w.ax) * w.dir; // facing
-      w.fy = (w.by - w.ay) * w.dir;
-
-      // suspicion
-      const dist = Math.hypot(s.px - w.x, s.py - w.y);
-      let seen = false;
-      if (!inFern(s.px, s.py) && dist < 165) {
-        const dot = ((s.px - w.x) * w.fx + (s.py - w.y) * w.fy) /
-          (Math.max(0.001, Math.hypot(w.fx, w.fy)) * Math.max(0.01, dist));
-        if (dot > 0.72 && losClear(w.x, w.y, s.px, s.py)) seen = true;
-      }
-      if (seen) {
-        w.susp = Math.min(1, w.susp + dt * 1.1);
-        if (w.susp >= 1 && s.caught <= 0) {
-          s.caught = 1.4; Sfx.bad(); g.save.d.deaths++; g.save.persist();
-        }
-        if (Math.random() < dt * 6) Sfx.rustle();
-      } else {
-        w.susp = Math.max(0, w.susp - dt * 0.8);
-      }
-      w.alert = seen ? 1 : (w.alert && w.susp > 0 ? 1 : 0);
-    }
-
-    // cells pickup
-    for (const c of cells) {
-      if (!c.got && Math.abs(s.px - (c.tx + 0.5) * TS) < 14 && Math.abs(s.py - (c.ty + 0.5) * TS) < 14) {
-        c.got = true; s.gotCount++;
-        g.save.addXP(20); Sfx.pick();
-        if (s.gotCount >= 3) Sfx.good();
-      }
-    }
-
-    // exit
-    if (s.gotCount >= 3 &&
-        Math.abs(s.px - (exit.x + 0.5) * TS) < 14 && Math.abs(s.py - (exit.y + 0.5) * TS) < 14) {
-      g.save.addXP(30); Sfx.good();
-      g.complete('w1');
-    }
-  };
-
-  function resetPositions() {
-    s.px = (start.x + 0.5) * TS; s.py = (start.y + 0.5) * TS;
-    s.st = s.stMax / 2;
-    for (const w of watchers) { w.t = 0; w.dir = 1; w.susp = 0; w.pause = 0; }
-  }
-
-  s.draw = (ctx) => {
-    ctx.fillStyle = PAL.bg1;
-    ctx.fillRect(0, 40, 960, 500);
-    // ground texture
-    ctx.fillStyle = PAL.bg0;
-    for (let y = 0; y < MAPH; y++) for (let x = 0; x < MAPW; x++) {
-      if ((x * 31 + y * 17) % 13 === 0) ctx.fillRect(x * TS + 8, 40 + y * TS + 8, 3, 3);
-    }
-    // rocks
-    for (const r of solid) {
-      if (r.x === 0 || r.y === 0 || r.x === MAPW - 1 || r.y === MAPH - 1) ctx.fillStyle = PAL.bg2;
-      else ctx.fillStyle = PAL.bg3;
-      ctx.fillRect(r.x * TS, 40 + r.y * TS, TS, TS);
-      ctx.strokeStyle = PAL.bg2; ctx.strokeRect(r.x * TS - 0.5, 40 + r.y * TS - 0.5, TS + 1, TS + 1);
-      if (r.x % 2 === 0 && r.y % 2 === 0) { ctx.fillStyle = PAL.bg3; ctx.fillRect(r.x * TS + 6, 40 + r.y * TS + 6, 7, 7); }
-    }
-    // brambles
-    for (const b of bramble) {
-      ctx.fillStyle = PAL.bg2;
-      ctx.fillRect(b.x * TS, 40 + b.y * TS, TS, TS);
-      ctx.strokeStyle = PAL.purple;
-      for (let i = 0; i < 4; i++) {
-        ctx.beginPath();
-        ctx.moveTo(b.x * TS + 4 + i * 7, 40 + b.y * TS + TS - 2);
-        ctx.lineTo(b.x * TS + 8 + i * 7, 40 + b.y * TS + 4);
-        ctx.stroke();
-      }
-    }
-    // ferns (safe zones)
-    const pulse = 0.5 + Math.sin(s.t * 4) * 0.25;
-    for (const f of ferns) {
-      const fx = (f.x + 0.5) * TS, fy = 40 + (f.y + 0.5) * TS;
-      ctx.globalAlpha = 0.16 * pulse + 0.08;
-      ctx.fillStyle = PAL.hot;
-      ctx.beginPath(); ctx.arc(fx, fy, 26, 0, 7); ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = PAL.hot;
-      ctx.lineWidth = 2;
-      for (let i = 0; i < 5; i++) {
-        const a = -Math.PI / 2 + (i - 2) * 0.5;
-        ctx.beginPath(); ctx.moveTo(fx, fy);
-        ctx.lineTo(fx + Math.cos(a) * 11, fy + Math.sin(a) * 11);
-        ctx.stroke();
-      }
-      ctx.lineWidth = 1;
-    }
-    // cells
-    for (const c of cells) {
-      if (c.got) continue;
-      const cx = (c.tx + 0.5) * TS, cy = 40 + (c.ty + 0.5) * TS + Math.sin(s.t * 3 + c.tx) * 2;
-      ctx.fillStyle = PAL.peach;
-      ctx.globalAlpha = 0.3 + pulse * 0.3;
-      ctx.beginPath(); ctx.arc(cx, cy, 11, 0, 7); ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = PAL.cream;
-      ctx.fillRect(cx - 4, cy - 6, 8, 12);
-      ctx.fillRect(cx - 2, cy - 8, 4, 16);
-    }
-    // exit pad
-    const exOn = s.gotCount >= 3;
-    const exx = (exit.x + 0.5) * TS, exy = 40 + (exit.y + 0.5) * TS;
-    ctx.fillStyle = exOn ? PAL.hot : PAL.bg3;
-    ctx.globalAlpha = exOn ? 0.35 + pulse * 0.3 : 0.4;
-    ctx.beginPath(); ctx.arc(exx, exy, 13, 0, 7); ctx.fill();
-    ctx.globalAlpha = 1;
-    if (exOn) {
-      ctx.fillStyle = PAL.cream;
-      ctx.font = f(10, 'bold');
-      ctx.fillText('EXIT', exx - 12, exy + 24);
-    }
-
-    // watchers: view cone then body
-    for (const w of watchers) {
-      if (w.fx === undefined) continue;
-      const a0 = Math.atan2(w.fy, w.fx) - 0.62;
-      const grad = ctx.createRadialGradient(w.x, w.y, 8, w.x, w.y, 165);
-      const col = w.susp > 0.05 ? 'rgba(255,158,203,' : 'rgba(180,144,214,';
-      grad.addColorStop(0, col + (0.34 - w.susp * 0.2) + ')');
-      grad.addColorStop(1, col + '0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.moveTo(w.x, w.y);
-      ctx.arc(w.x, w.y, 165, a0, a0 + 1.24);
-      ctx.closePath(); ctx.fill();
-
-      // body: big pale free-crawler
-      const bob = Math.sin(s.t * 6 + w.ax) * 2;
-      ctx.fillStyle = PAL.laver;
-      ctx.beginPath(); ctx.arc(w.x, w.y + bob, 11, 0, 7); ctx.fill();
-      ctx.strokeStyle = PAL.laver;
-      for (let i = -1; i <= 1; i++) {
-        for (const fd of [-1, 1]) {
-          ctx.beginPath();
-          ctx.moveTo(w.x, w.y + bob);
-          ctx.lineTo(w.x + fd * (10 + i * 3), w.y + bob + 10 + Math.abs(i) * 3 + Math.sin(s.t * 8 + i) * 2);
-          ctx.stroke();
-        }
-      }
-      ctx.fillStyle = w.alert ? PAL.rose : PAL.pink;
-      ctx.beginPath(); ctx.arc(w.x, w.y - 3 + bob, 4, 0, 7); ctx.fill();
-    }
-
-    // player: little astronaut
-    ctx.fillStyle = PAL.cream;
-    ctx.beginPath(); ctx.arc(s.px, s.py, 9, 0, 7); ctx.fill();
-    ctx.fillStyle = PAL.bg2;
-    ctx.beginPath(); ctx.arc(s.px - 2, s.py - 2, 5, 0, 7); ctx.fill();
-    ctx.fillStyle = PAL.hot;
-    ctx.beginPath(); ctx.arc(s.px + 4, s.py, 2.5, 0, 7); ctx.fill();
-
-    // stamina bar (under HUD)
-    bar2(ctx, 12, 510, 180, 10, s.st / s.stMax, s.sprinting ? PAL.rose : PAL.laver);
-    ctx.font = f(10); ctx.fillStyle = PAL.laver;
-    ctx.fillText('STAMINA', 14, 524);
-
-    // suspicion eye if any
-    const maxSusp = Math.max(...watchers.map((w) => w.susp));
-    if (maxSusp > 0.01) {
-      ctx.font = f(14, 'bold'); ctx.fillStyle = PAL.rose;
-      ctx.fillText('THEY SEE SOMETHING...', 340, 524);
-    }
-
-    if (s.caught > 0) {
-      ctx.fillStyle = 'rgba(15,8,32,0.75)';
-      ctx.fillRect(0, 0, 960, 540);
-      ctx.font = f(30, 'bold'); ctx.fillStyle = PAL.rose;
-      ctx.textAlign = 'center';
-      ctx.fillText('A watcher found you', 480, 268);
-      ctx.font = f(16); ctx.fillStyle = PAL.laver;
-      ctx.fillText('The wilds reset. Slow down - use the ferns.', 480, 300);
-      ctx.textAlign = 'left';
-    }
-
-    function bar2(c, x, y, w, h, frac, col) {
-      c.fillStyle = PAL.ink; c.fillRect(x, y, w, h);
-      c.fillStyle = col; c.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), h);
-      c.strokeStyle = PAL.purple; c.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
-    }
-  };
-
-  return s;
-}
-
-// ============================ WORLD 2: THE LABYRINTH ============================
-const MW = 21, MH = 13, MTS = 36;
-
-export function mazeLevel(g) {
-  // generate maze with seeded DFS
-  let seed = 1337 + (Math.random() * 99999 | 0);
-  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
-  const solid = [];
-  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (x % 2 === 0 || y % 2 === 0) solid.push({ x, y });
-  const isSolid = (x, y) => x < 0 || y < 0 || x >= MW || y >= MH || solid.some((r) => r.x === x && r.y === y);
-  const open = (x, y) => { const i = solid.findIndex((r) => r.x === x && r.y === y); if (i >= 0) solid.splice(i, 1); };
-
-  const cw = (MW - 1) / 2, ch = (MH - 1) / 2;
-  const visited = new Set(['0,0']);
-  const stack = [{ x: 0, y: 0 }];
-  while (stack.length) {
-    const c = stack[stack.length - 1];
-    const nbs = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-      .map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy }))
-      .filter((n) => n.x >= 0 && n.y >= 0 && n.x < cw && n.y < ch && !visited.has(n.x + ',' + n.y));
-    if (!nbs.length) { stack.pop(); continue; }
-    const n = nbs[(rnd() * nbs.length) | 0];
-    open(c.x * 2 + 1 + (n.x - c.x), c.y * 2 + 1 + (n.y - c.y));
-    visited.add(n.x + ',' + n.y);
-    stack.push(n);
-  }
-  // knock a few extra holes so dead ends are less brutal
-  for (let i = 0; i < 6; i++) {
-    const x = 1 + ((rnd() * (MW - 2)) | 0), y = 1 + ((rnd() * (MH - 2)) | 0);
-    if (x % 2 === 1 && y % 2 === 0) open(x, y);
-    else if (x % 2 === 0 && y % 2 === 1) open(x, y);
-  }
-
-  // BFS distances from start tile
-  const sx = 1, sy = 1;
-  const dist = new Map([['1,1', 0]]);
-  const q = [{ x: 1, y: 1 }];
-  while (q.length) {
-    const c = q.shift();
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const n = c.x + dx, ny2 = c.y + dy, k = n + ',' + ny2;
-      if (!isSolid(n, ny2) && !dist.has(k)) { dist.set(k, dist.get(c.x + ',' + c.y) + 1); q.push({ x: n, y: ny2 }); }
-    }
-  }
-  const far = [...dist.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k.split(',').map(Number));
-  const soulTile = far[0];
-  const fuelTile = far[Math.floor(far.length / 2)] || far[1];
-
-  // oil drops on random floor tiles mid-distance
-  const drops = [];
-  const cellsMid = far.filter(([x, y]) => {
-    const d = dist.get(x + ',' + y);
-    return d > 3 && d < far[0][1] - 1;
+    },
   });
-  for (let i = 0; i < 8 && cellsMid.length; i++) {
-    const idx = (rnd() * cellsMid.length) | 0;
-    const [x, y] = cellsMid.splice(idx, 1)[0];
-    drops.push({ x: (x + 0.5) * MTS, y: (y + 0.5) * MTS, got: false, ph: Math.random() * 7 });
-  }
 
-  // shadows
-  const shadows = [];
-  for (let i = 0; i < 4; i++) {
-    const tile = far[2 + i * 2] || far[2];
-    shadows.push({ x: (tile[0] + 0.5) * MTS, y: (tile[1] + 0.5) * MTS, tx: null, ty: null, retarget: 0 });
-  }
-
-  const ox = (960 - MW * MTS) / 2, oy = 46;
-  const soul = { x: (soulTile[0] + 0.5) * MTS, y: (soulTile[1] + 0.5) * MTS, got: false };
-  const fuel = { x: (fuelTile[0] + 0.5) * MTS, y: (fuelTile[1] + 0.5) * MTS, got: false };
-  const portal = { x: (sx + 0.5) * MTS, y: (sy + 0.5) * MTS, on: false };
-
-  const s = {
-    title: 'WORLD 2 - THE LABYRINTH',
-    objective: "Find Moria\u2019s soul + the fuel before the lantern dies",
-    brief: [
-      'Move: WASD / Arrows.  Your lantern burns oil - when it dies, the darkness takes you.',
-      'Bring Moria his lost soul AND the fuel canister, then return to the portal where you woke.',
-      'Oil drops refill the lantern. Shadows drift through the dark - if one touches you, the maze resets.',
-    ],
-    px: (sx + 0.5) * MTS, py: (sy + 0.5) * MTS,
-    oil: g.save.oilMax(),
-    oilMax: g.save.oilMax(),
-    t: 0,
-    dying: 0,
-    gotS: 0, gotF: 0,
-    radius: 200,
-  };
-
-  function collide(px, py, r) {
-    for (let ty = Math.floor((py - r) / MTS); ty <= Math.floor((py + r) / MTS); ty++) {
-      for (let tx = Math.floor((px - r) / MTS); tx <= Math.floor((px + r) / MTS); tx++) {
-        if (isSolid(tx, ty)) {
-          const cx = Math.max(tx * MTS, Math.min(px, tx * MTS + MTS));
-          const cy = Math.max(ty * MTS, Math.min(py, ty * MTS + MTS));
-          if ((px - cx) ** 2 + (py - cy) ** 2 < r * r) return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  s.update = (dt) => {
-    s.t += dt;
-    g.save.d.time += dt;
-    if (s.dying > 0) {
-      s.dying -= dt;
-      s.radius = Math.max(14, s.radius - dt * 60);
-      if (s.dying <= 0) resetPositions();
-      return;
-    }
-    // oil
-    s.oil -= dt;
-    if (s.oil <= 0) { s.oil = 0; s.dying = 2.2; s.dyingText = 'The lantern went dark'; Sfx.bad(); g.save.d.deaths++; g.save.persist(); }
-    s.radius = 56 + 150 * Math.max(0.06, s.oil / s.oilMax);
-
-    const k = g.keys, sp = 125;
-    let dx = (k['ArrowRight'] || k['d'] ? 1 : 0) - (k['ArrowLeft'] || k['a'] ? 1 : 0);
-    let dy = (k['ArrowDown'] || k['s'] ? 1 : 0) - (k['ArrowUp'] || k['w'] ? 1 : 0);
-    if (dx && dy) { dx *= 0.707; dy *= 0.707; }
-    let nx = s.px + dx * sp * dt, ny = s.py + dy * sp * dt;
-    if (!collide(nx, s.py, 9)) s.px = nx;
-    if (!collide(s.px, ny, 9)) s.py = ny;
-
-    // shadows wander towards you
-    for (const sh of shadows) {
-      sh.retarget -= dt;
-      const dp = Math.hypot(s.px - sh.x, s.py - sh.y);
-      if (dp < 210) { sh.tx = s.px; sh.ty = s.py; }
-      else if (!sh.tx || sh.retarget <= 0) { sh.tx = sh.x + (Math.random() - 0.5) * 220; sh.ty = sh.y + (Math.random() - 0.5) * 220; sh.retarget = 2 + Math.random() * 2; }
-      const d = Math.hypot(sh.tx - sh.x, sh.ty - sh.y) || 1;
-      const sp2 = dp < 210 ? 46 : 30;
-      sh.x += ((sh.tx - sh.x) / d) * sp2 * dt;
-      sh.y += ((sh.ty - sh.y) / d) * sp2 * dt;
-      if (Math.hypot(s.px - sh.x, s.py - sh.y) < 12) {
-        Sfx.bad(); g.save.d.deaths++; g.save.persist();
-        s.dying = 1.2; s.dyingText = 'A shadow touched you';
-      }
-    }
-
-    // pickups
-    for (const dr of drops) {
-      if (!dr.got && Math.hypot(s.px - dr.x, s.py - dr.y) < 14) {
-        dr.got = true; s.oil = Math.min(s.oilMax, s.oil + 14); Sfx.pick();
-      }
-    }
-    if (!soul.got && Math.hypot(s.px - soul.x, s.py - soul.y) < 14) {
-      soul.got = true; s.gotS = 1; g.save.addXP(35); Sfx.good();
-    }
-    if (!fuel.got && Math.hypot(s.px - fuel.x, s.py - fuel.y) < 14) {
-      fuel.got = true; s.gotF = 1; g.save.addXP(35); Sfx.good();
-    }
-    if (s.gotS && s.gotF) portal.on = true;
-    if (portal.on && Math.hypot(s.px - portal.x, s.py - portal.y) < 16) {
-      g.save.addXP(20); Sfx.good();
-      g.complete('maze');
-    }
-  };
-
-  function resetPositions() {
-    s.px = (sx + 0.5) * MTS; s.py = (sy + 0.5) * MTS;
-    s.oil = s.oilMax * 0.7;
-    s.radius = 160;
-  }
-
-  s.draw = (ctx) => {
-    ctx.fillStyle = PAL.bg0;
-    ctx.fillRect(0, 0, 960, 540);
-    ctx.save();
-    ctx.translate(ox, oy);
-
-    // floor + walls
-    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-      if (isSolid(x, y)) {
-        ctx.fillStyle = PAL.bg2;
-        ctx.fillRect(x * MTS, y * MTS, MTS, MTS);
-        ctx.fillStyle = PAL.bg3;
-        ctx.fillRect(x * MTS + 3, y * MTS + 3, MTS - 6, MTS - 6);
-      }
-    }
-
-    // items (drawn before darkness, dimmable)
-    const pulse = 0.5 + Math.sin(s.t * 4) * 0.25;
-    for (const dr of drops) {
-      if (dr.got) continue;
-      ctx.globalAlpha = 0.5;
-      ctx.fillStyle = PAL.hot;
-      ctx.beginPath(); ctx.arc(dr.x, dr.y + Math.sin(s.t * 3 + dr.ph) * 2, 5, 0, 7); ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-    if (!soul.got) {
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = PAL.rose;
-      ctx.beginPath(); ctx.arc(soul.x, soul.y + Math.sin(s.t * 2.4) * 3, 8, 0, 7); ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-    if (!fuel.got) {
-      ctx.fillStyle = PAL.peach;
-      ctx.fillRect(fuel.x - 6, fuel.y - 8, 12, 16);
-      ctx.fillStyle = PAL.pink;
-      ctx.fillRect(fuel.x - 6, fuel.y - 3, 12, 5);
-    }
-    if (portal.on) {
-      ctx.globalAlpha = 0.3 + pulse * 0.4;
-      ctx.fillStyle = PAL.hot;
-      ctx.beginPath(); ctx.arc(portal.x, portal.y, 15, 0, 7); ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-
-    // shadows (only visible if within radius)
-    for (const sh of shadows) {
-      const d = Math.hypot(s.px + ox - (sh.x + ox), s.py + oy - (sh.y + oy));
-      if (d < s.radius + 10) {
-        ctx.globalAlpha = 0.75;
-        ctx.fillStyle = PAL.ink;
-        ctx.beginPath(); ctx.arc(sh.x, sh.y, 11, 0, 7); ctx.fill();
-        ctx.strokeStyle = PAL.purple;
-        ctx.beginPath(); ctx.arc(sh.x, sh.y, 11, 0, 7); ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-    }
-
-    // player + lantern
-    ctx.fillStyle = PAL.cream;
-    ctx.beginPath(); ctx.arc(s.px, s.py, 9, 0, 7); ctx.fill();
-    ctx.fillStyle = PAL.bg2;
-    ctx.beginPath(); ctx.arc(s.px - 2, s.py - 2, 5, 0, 7); ctx.fill();
-    ctx.fillStyle = PAL.peach;
-    ctx.beginPath(); ctx.arc(s.px + 8, s.py - 6, 3, 0, 7); ctx.fill();
-
-    // darkness overlay with light hole
-    const grd = ctx.createRadialGradient(s.px, s.py, s.radius * 0.35, s.px, s.py, s.radius);
-    grd.addColorStop(0, 'rgba(10,5,20,0)');
-    grd.addColorStop(1, 'rgba(10,5,20,0.97)');
-    ctx.fillStyle = grd;
-    ctx.fillRect(-ox, -oy, 960, 540);
-    // hard dark beyond radius (covers whole screen incl. HUD area since translate)
-    ctx.fillStyle = 'rgba(10,5,20,0.985)';
-    ctx.beginPath();
-    ctx.arc(s.px, s.py, s.radius, 0, Math.PI * 2);
-    ctx.rect(-ox - 10, -oy - 10, 980, 560);
-    ctx.fill('evenodd');
-
-    ctx.restore();
-
-    // oil gauge
-    const frac = s.oil / s.oilMax;
-    ctx.fillStyle = PAL.ink; ctx.fillRect(360, 514, 240, 14);
-    ctx.fillStyle = frac > 0.25 ? PAL.peach : PAL.rose;
-    ctx.fillRect(360, 514, 240 * Math.max(0, frac), 14);
-    ctx.strokeStyle = PAL.lampp; ctx.strokeRect(359.5, 513.5, 241, 15);
-    ctx.font = f(11, 'bold'); ctx.fillStyle = PAL.laver;
-    ctx.fillText('LANTERN OIL', 268, 525);
-    ctx.font = f(11);
-    ctx.fillStyle = PAL.laver;
-    ctx.fillText(`ITEMS ${s.gotS + s.gotF}/2`, 625, 525);
-
-    if (s.dying > 0) {
-      ctx.fillStyle = 'rgba(10,5,20,0.8)';
-      ctx.fillRect(0, 0, 960, 540);
-      ctx.textAlign = 'center';
-      ctx.font = f(28, 'bold'); ctx.fillStyle = PAL.rose;
-      ctx.fillText(s.dyingText || 'The darkness took you', 480, 265);
-      ctx.font = f(15); ctx.fillStyle = PAL.laver;
-      ctx.fillText('Keep the lantern burning. Follow the oil drops.', 480, 296);
-      ctx.textAlign = 'left';
-    }
-  };
-
+  s.cells = 0;
+  s.items = [
+    { kind: 'cell', x: T(18) + 16, y: T(13) + 8 },
+    { kind: 'cell', x: T(58) + 16, y: T(13) + 8 },
+    { kind: 'cell', x: T(85) + 16, y: T(13) + 8 },
+    { kind: 'shard', x: T(8) + 16, y: T(17) + 6 },
+    { kind: 'shard', x: T(31) + 16, y: T(13) + 6 },
+    { kind: 'shard', x: T(70) + 16, y: T(13) + 6 },
+    { kind: 'shard', x: T(99) + 16, y: T(15) + 6 },
+  ];
+  s.checkpoints = [
+    { x: T(2) + 16, y: T(20), on: true },
+    { x: T(24) + 16, y: T(20), on: false },
+    { x: T(76) + 16, y: T(20), on: false },
+    { x: T(100) + 16, y: T(20), on: false },
+  ];
+  s.movers = [
+    makeMover(T(72), T(18), 96, 14, { dx: 96, speed: 0.5, phase: 0.1 }),
+  ];
   return s;
 }
 
-// ============================ WORLD 3: CAESAR'S TOWER ============================
-export function towerLevel(g) {
-  const s = {
-    title: 'WORLD 3 - THE TOWER OF CAESAR',
-    objective: 'Three rooms: levers, crates, riddle',
+function mkWatch(x0, x1, y, speed, phase) {
+  return { x0, x1, y, speed, phase, x: x0, dir: 1, susp: 0, alert: 0 };
+}
+
+function updateWatchers(st, watchers, ferns, dt, caught) {
+  const hidden = ferns.some((fn) => Math.hypot(st.p.x - fn.x, (st.p.y - 12) - fn.y) < 40);
+  for (const w of watchers) {
+    const k = st.t * w.speed * Math.PI * 2 + w.phase * Math.PI;
+    const ease = 0.5 - 0.5 * Math.cos(k);
+    w.x = w.x0 + (w.x1 - w.x0) * ease;
+    const vel = Math.sin(k);
+    w.dir = vel >= 0 ? 1 : -1;
+    w.alert = 0;
+
+    const px = st.p.x, py = st.p.y - 15;
+    const dx = px - w.x, dy = py - w.y;
+    const dist = Math.hypot(dx, dy);
+    let seen = false;
+    if (!hidden && dist < 210) {
+      const dot = (dx * w.dir) / Math.max(0.001, dist);
+      if (dot > 0.55 && losClear(st.world, w.x, w.y, px, py)) seen = true;
+    }
+    if (seen) {
+      w.susp = Math.min(1, w.susp + dt * 0.9);
+      w.alert = 1;
+      if (w.susp >= 1) {
+        for (const x of watchers) x.susp = 0;
+        caught('A WATCHER SAW YOU');
+        Sfx.bad();
+        return;
+      }
+    } else {
+      w.susp = Math.max(0, w.susp - dt * 0.7);
+    }
+  }
+}
+
+function losClear(grid, x1, y1, x2, y2) {
+  const d = Math.hypot(x2 - x1, y2 - y1);
+  const steps = Math.ceil(d / 12);
+  for (let i = 1; i < steps; i++) {
+    const x = x1 + ((x2 - x1) * i) / steps, y = y1 + ((y2 - y1) * i) / steps;
+    const t = grid.get(Math.floor(x / TS), Math.floor(y / TS));
+    if (t === 1 || t === 4) return false;
+  }
+  return true;
+}
+
+function drawFern(ctx, fn, st) {
+  const x = fn.x - st.cam.x, y = fn.y - st.cam.y;
+  const pulse = 0.5 + Math.sin(st.t * 4 + fn.x) * 0.2;
+  ctx.globalAlpha = 0.2 + pulse * 0.15;
+  ctx.fillStyle = PAL.hot;
+  ctx.beginPath(); ctx.arc(x, y + 4, 34, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = PAL.hot;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 6; i++) {
+    const a = -Math.PI / 2 + (i - 2.5) * 0.4;
+    ctx.beginPath();
+    ctx.moveTo(x, y + 12);
+    ctx.quadraticCurveTo(x + Math.cos(a) * 18, y + Math.sin(a) * 14, x + Math.cos(a) * 28, y + Math.sin(a) * 8);
+    ctx.stroke();
+  }
+  ctx.lineWidth = 1;
+  ctx.fillStyle = PAL.pink;
+  ctx.beginPath(); ctx.arc(x, y + 8, 4, 0, 7); ctx.fill();
+}
+
+function drawWatcher(ctx, w, st) {
+  const x = w.x - st.cam.x, y = w.y - st.cam.y + Math.sin(st.t * 5 + w.x0) * 3;
+  // cone of light
+  const a0 = w.dir > 0 ? -0.5 : Math.PI - 0.5;
+  const g = ctx.createRadialGradient(x, y, 12, x, y, 210);
+  const col = w.susp > 0.03 ? 'rgba(255,158,203,' : 'rgba(180,144,214,';
+  g.addColorStop(0, col + (0.30 + w.susp * 0.2) + ')');
+  g.addColorStop(1, col + '0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.arc(x, y, 210, a0, a0 + 1.0);
+  ctx.closePath(); ctx.fill();
+  // drone body
+  ctx.fillStyle = PAL.laver;
+  ctx.beginPath(); ctx.arc(x, y, 12, 0, 7); ctx.fill();
+  ctx.fillStyle = PAL.bg2;
+  ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill();
+  ctx.fillStyle = w.susp > 0.03 ? PAL.rose : PAL.hot;
+  ctx.beginPath(); ctx.arc(x + w.dir * 4, y - 1, 4, 0, 7); ctx.fill();
+  // tendrils
+  ctx.strokeStyle = PAL.laver;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x - 6 + i * 6, y + 10);
+    ctx.quadraticCurveTo(x - 8 + i * 7, y + 20, x - 4 + i * 6, y + 26 + Math.sin(st.t * 6 + i) * 3);
+    ctx.stroke();
+  }
+}
+
+function drawWildsBg(ctx, st) {
+  const grad = ctx.createLinearGradient(0, 0, 0, 540);
+  grad.addColorStop(0, '#150c26');
+  grad.addColorStop(0.6, '#1d1230');
+  grad.addColorStop(1, '#120a1f'); // below the tiles: chasms must read as holes
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 960, 540);
+  // stars
+  for (let i = 0; i < 60; i++) {
+    const x = (i * 173 - st.cam.x * 0.15) % 1100;
+    const y = (i * 91) % 300;
+    ctx.fillStyle = i % 4 === 0 ? PAL.peach : PAL.laver;
+    ctx.globalAlpha = 0.25 + (i % 5) * 0.1 + Math.sin(st.t * 2 + i) * 0.1;
+    ctx.fillRect(x < 0 ? x + 1100 : x, y, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+  // mountain silhouettes
+  for (let layer = 0; layer < 3; layer++) {
+    ctx.fillStyle = ['#1a0f2a', '#21132f', '#291838'][layer];
+    ctx.beginPath();
+    ctx.moveTo(0, 540);
+    const off = st.cam.x * (0.1 + layer * 0.08);
+    for (let x = -100; x <= 1100; x += 100) {
+      const h = 160 + layer * 40 + ((x + layer * 37) % 120);
+      ctx.lineTo(x - (off % 200), 540 - h);
+      ctx.lineTo(x + 50 - (off % 200), 540 - h - 60);
+    }
+    ctx.lineTo(1100, 540);
+    ctx.closePath(); ctx.fill();
+  }
+  // fog
+  ctx.fillStyle = 'rgba(231,84,166,0.06)';
+  ctx.fillRect(0, 380, 960, 160);
+  // depth haze: below the treeline, chasms must read darker than the ground
+  const dk = ctx.createLinearGradient(0, 330, 0, 540);
+  dk.addColorStop(0, 'rgba(10,5,20,0)');
+  dk.addColorStop(1, 'rgba(10,5,20,0.82)');
+  ctx.fillStyle = dk;
+  ctx.fillRect(0, 330, 960, 210);
+}
+
+// ================================================================ WORLD 2
+// THE LABYRINTH OF MORIA - lantern platformer. Light is ammo, not decoration.
+export function mazeLevel(g) {
+  const world = new WorldGrid(100, 34);
+  world.rect(0, 0, 100, 2);          // cave ceiling
+  world.rect(0, 32, 16, 2);          // floor, with chasms
+  world.rect(18, 32, 20, 2);
+  world.rect(41, 32, 20, 2);
+  world.rect(64, 32, 36, 2);
+  world.rect(4, 28, 11, 2);          // start plateau, 128px above the cave floor
+  world.rect(0, 30, 3, 2);           // stair block back up to the plateau
+
+  // stair of ledges climbing to the soul (every step 2 rows up)
+  const stair = [
+    [19, 30, 3], [22, 28, 3], [25, 26, 3], [28, 24, 3], [31, 22, 3],
+    [34, 20, 3], [37, 18, 3], [40, 16, 3], [43, 14, 3], [46, 12, 3],
+    [49, 10, 3], [52, 8, 3],
+  ];
+  for (const [x, y, w] of stair) world.rect(x, y, w, 1);
+  world.rect(55, 7, 9, 1);           // soul shelf
+  // right floor area decoration
+  world.rect(70, 29, 3, 1);
+  world.rect(76, 27, 3, 1);
+  world.rect(82, 29, 4, 1);
+  // spikes on the central floor
+  for (let x = 46; x <= 49; x++) world.set(x, 31, 3);
+
+  const goal = { x: T(6), y: T(28), active: false, label: 'PORTAL' };
+
+  const shadows = [
+    mkShadow(T(26), T(24)), mkShadow(T(44), T(14)),
+    mkShadow(T(52), T(8)), mkShadow(T(70), T(32)), mkShadow(T(86), T(32)),
+  ];
+  const shadowSpawns = shadows.map((s) => ({ x: s.hx, y: s.hy }));
+
+  const s = makePlatformLevel(g, {
+    title: 'WORLD 2 - THE LABYRINTH',
+    objective: "Soul 0/1 - Fuel 0/1 - don't let the lantern die",
     brief: [
-      'Move: WASD / Arrows   -   Use / pull: SPACE   -   Restart room: R',
-      'Caesar guards the hull plating at the top: pass his hall of levers, the counterweight room, and his riddle.',
-      'Read the inscriptions carved into the walls - they matter.',
+      'WASD / Arrows - run   -   SPACE - jump (twice for the thruster boots)   -   E - use',
+      'Find Moria\u2019s lost soul and the fuel canister, then carry both back to the portal where you woke.',
+      'Your lantern burns oil: the darker it gets, the smaller your light. Oil drops refill it. Shadows live in the dark - do not touch them.',
     ],
-    mode: 'levers',
-    t: 0,
-    rooms: [],
-    unlocked: false,
-  };
-
-  const state = {
-    levers: null, soko: null, riddle: null,
-  };
-  s.roomsState = state; // exposed for automated testing / debugging
-
-  // ---------------- Room I: levers ----------------
-  state.levers = (() => {
-    // wall order displayed:  FLAME  FROST  STAR  MOON
-    // correct sequence:  FROST -> FLAME -> MOON -> STAR
-    const L = [
-      { name: 'FLAME', x: 240 },
-      { name: 'FROST', x: 400 },
-      { name: 'STAR', x: 560 },
-      { name: 'MOON', x: 720 },
-    ];
-    return {
-      L,
-      prog: 0,
-      seq: ['FROST', 'FLAME', 'MOON', 'STAR'],
-      lift: 0,
-      done: false,
-    };
-  })();
-
-  // ---------------- Room II: counterweights (sokoban) ----------------
-  state.soko = (() => {
-    const rows = [
-      '#######',
-      '#.....#',
-      '#.C.C.#',
-      '#.....#',
-      '#O...O#',
-      '#######',
-    ];
-    return {
-      w: 7, h: 6, rows, ts: 58,
-      ox: (960 - 7 * 58) / 2, oy: 120,
-      done: false,
-    };
-  })();
-
-  // ---------------- Room III: Caesar's riddle ----------------
-  state.riddle = { done: false };
-
-  s.px = null;
-
-  s.update = (dt) => {
-    if (Dialogue.active) return;
-    s.t += dt;
-    g.save.d.time += dt;
-    const spd = 140;
-    const k = g.keys, once = g.consumeKeys();
-
-    if (s.mode === 'levers') {
-      let dx = (k['ArrowRight'] || k['d'] ? 1 : 0) - (k['ArrowLeft'] || k['a'] ? 1 : 0);
-      s.px = Math.max(60, Math.min(900, (s.px || 480) + dx * spd * dt));
-      s.py = 360;
-      for (const l of state.levers.L) {
-        if (Math.abs(s.px - l.x) < 26 && once[' ']) {
-          if (state.levers.prog < 4 && l.name === state.levers.seq[state.levers.prog]) {
-            l.pulled = true; state.levers.prog++; Sfx.lever();
-            if (state.levers.prog === 4) { state.levers.done = true; Sfx.good(); g.save.addXP(30); }
-          } else {
-            Sfx.bad();
-            state.levers.prog = 0;
-            for (const ll of state.levers.L) ll.pulled = false;
-          }
+    briefTopics: [
+      { label: 'CYU: Who is Moria?', lines: [
+        { who: 'CYU', text: 'The cave-mind. Old, sad, and extremely possessive of its soul. Someone broke in and stole it years ago. We are going to borrow it back.' },
+        { who: 'YOU', text: 'Borrow.', choices: [
+          { label: 'Borrow. Sure.', flag: 'm1' },
+          { label: 'We are stealing it, Cyu.', flag: 'm2' },
+        ] },
+        { who: 'CYU', text: 'We are borrowing it with intent to return. That is different. Probably.' },
+      ] },
+      { label: 'CYU: How does the lantern work?', lines: [
+        { who: 'CYU', text: 'It burns oil. The more oil, the bigger the circle of "not eaten". Pink drops on the ground refill it. The bar at the bottom is your life, too.' },
+      ] },
+      { label: 'CYU: What are the shadows?', lines: [
+        { who: 'CYU', text: 'Things the light forgot. They drift toward warmth. Stay out of arm\u2019s reach and you are a rumour to them.' },
+        { who: 'CYU', text: 'If one touches you, the maze resets us to the last beacon. The lantern will be angry about it.' },
+      ] },
+    ],
+    world,
+    theme: {
+      block: '#2a1a42', inner: '#1a0f2a', top: '#3f2660', speck: '#8657b8',
+      plat: '#3f2660', platTop: '#8657b8', spike: '#b490d6',
+      crumble: '#3f2660', crack: '#8657b8',
+    },
+    spawn: { x: T(6), y: T(28) },
+    hearts: g.save.hearts(),
+    oil: g.save.oilMax(),
+    goal,
+    bg: (ctx, st) => drawCaveBg(ctx, st),
+    drawMid: (ctx, st) => {
+      for (const sh of shadows) drawShadow(ctx, sh, st, 0);
+    },
+    onUpdate: (st, dt) => {
+      // oil burns, light shrinks
+      st.oil = Math.max(0, st.oil - dt);
+      st.radius = 150 + 130 * (st.oil / st.oilMax);
+      if (st.oil <= 0) {
+        if (st.damage(1)) {
+          st.oil = st.oilMax * 0.65;
+          st.flash('The lantern guttered out...');
         }
       }
-      if (state.levers.done) {
-        state.levers.lift = Math.min(1, state.levers.lift + dt * 0.5);
-        if (state.levers.lift >= 1 && once[' ']) {
-          s.mode = 'soko'; s.px = null; s.rooms.push('I');
-          Sfx.blip();
+      st.objective = `Soul ${st.hasSoul ? 1 : 0}/1 - Fuel ${st.hasFuel ? 1 : 0}/1`;
+      if (st.hasSoul && st.hasFuel && !st.goal.active) {
+        st.goal.active = true;
+        st.flash('THE PORTAL OPENS');
+        Sfx.good();
+      }
+      // shadows hunt the light
+      for (const sh of shadows) {
+        const dp = Math.hypot(st.p.x - sh.x, (st.p.y - 15) - sh.y);
+        sh.retarget -= dt;
+        if (dp < 240) { sh.tx = st.p.x; sh.ty = st.p.y - 15; }
+        else if (!sh.tx || sh.retarget <= 0) {
+          sh.tx = sh.hx + (Math.random() - 0.5) * 260;
+          sh.ty = sh.hy + (Math.random() - 0.5) * 180;
+          sh.retarget = 2.5 + Math.random() * 2;
+        }
+        const d = Math.hypot(sh.tx - sh.x, sh.ty - sh.y) || 1;
+        const sp = dp < 240 ? 52 : 30;
+        sh.x += ((sh.tx - sh.x) / d) * sp * dt;
+        sh.y += ((sh.ty - sh.y) / d) * sp * dt;
+        sh.ph += dt * 3;
+        if (dp < 20) {
+          st.damage(1);
+          st.flash('A shadow found you');
+          if (st.oil > 0) st.oil = Math.max(20, st.oil - 12);
+          break;
         }
       }
-    } else if (s.mode === 'soko') {
-      if (!s.sx) {
-        s.sx = 3; s.sy = 4; s.crateList = [{ cx: 2, cy: 2 }, { cx: 4, cy: 2 }];
-        buildPlateList();
-      }
-      if (once['r'] || once['R']) { s.sx = 3; s.sy = 4; s.crateList = [{ cx: 2, cy: 2 }, { cx: 4, cy: 2 }]; Sfx.blip(); }
-      let moved = null;
-      if (once['ArrowUp'] || once['w']) moved = [0, -1];
-      else if (once['ArrowDown'] || once['s']) moved = [0, 1];
-      else if (once['ArrowLeft'] || once['a']) moved = [-1, 0];
-      else if (once['ArrowRight'] || once['d']) moved = [1, 0];
-      if (moved) {
-        const nx2 = s.sx + moved[0], ny2 = s.sy + moved[1];
-        const crate = s.crateList.find((c) => c.cx === nx2 && c.cy === ny2);
-        if (tile(state.soko, nx2, ny2) !== '#') {
-          if (!crate) { s.sx = nx2; s.sy = ny2; }
-          else {
-            const bx = nx2 + moved[0], by = ny2 + moved[1];
-            if (tile(state.soko, bx, by) !== '#' && !s.crateList.some((c) => c.cx === bx && c.cy === by)) {
-              crate.cx = bx; crate.cy = by; s.sx = nx2; s.sy = ny2; Sfx.lever();
-            }
-          }
-        }
-      }
-      // plates occupied?
-      let all = true;
-      for (const p of s.plateList) {
-        if (!s.crateList.some((c) => c.cx === p[0] && c.cy === p[1])) all = false;
-      }
-      if (all) {
-        g.save.addXP(30); Sfx.good();
-        s.mode = 'riddle'; s.rooms.push('II');
-        s.px = null; s.sx = null;
-        s.riddleChoice = 0; s.riddlePhase = 'ask';
-      }
-    } else if (s.mode === 'riddle') {
-      if (s.riddlePhase === 'ask') {
-        if (once['ArrowUp'] || once['w']) { s.riddleChoice = (s.riddleChoice + 2) % 3; Sfx.blip(); }
-        if (once['ArrowDown'] || once['s']) { s.riddleChoice = (s.riddleChoice + 1) % 3; Sfx.blip(); }
-        if (once[' ']) {
-          if (s.riddleChoice === 0) {
-            s.riddlePhase = 'win';
-            g.dialogue([
-              { who: 'CAESAR', text: 'Ha! The MOUNTAIN, of course - the one who never moves. Everything else climbs ME. Read the walls next time, drifter!' },
-              { who: 'CAESAR', text: 'Oh - and before you go: the stairs were on the left. The hidden ones. We could have just... walked up. Ha ha ha!' },
-            ], () => {
-              g.save.addXP(40); Sfx.good(); g.complete('tower');
-            });
-          } else {
-            s.riddlePhase = 'miss';
-            const wrongIs = s.riddleChoice === 1 ? 'The pulley moves all, yes - but it moves because something anchors it.' : 'The inscriptions remember, yes - but they were carved by one who does not move.';
-            g.dialogue([
-              { who: 'CAESAR', text: 'Wrong, little drifter! Ha!' },
-              { who: 'CYU', text: 'Try again. The walls said: "The mountain does not move - yet the tower climbs it."' },
-              { who: 'CAESAR', text: wrongIs + ' Answer again.' },
-            ], () => { s.riddlePhase = 'ask'; });
-          }
-        }
-      }
-    }
-  };
+    },
+    onRespawn: (st) => {
+      st.oil = Math.max(st.oil, st.oilMax * 0.55);
+      shadows.forEach((sh, i) => {
+        sh.x = shadowSpawns[i].x; sh.y = shadowSpawns[i].y;
+        sh.tx = null; sh.ty = null;
+      });
+    },
+    onGoal: (st) => {
+      if (st.done) return;
+      st.done = true;
+      g.dialogue([
+        { who: 'MORIA', text: '...you brought it back. The light. The little light. I had forgotten how warm.' },
+        { who: 'CYU', text: 'Soul and fuel, captain. Moria is purring - in a cave-mind sort of way. Two worlds down.' },
+        { who: 'CYU', text: 'The next signature is tall. Very tall. I would say "rest first", but the tower is already paging us.' },
+      ], () => { g.complete('maze'); });
+    },
+    onOverlay: (ctx, st) => {
+      const cx = st.p.x - st.cam.x, cy = st.p.y - 16 - st.cam.y;
+      // radius is derived each update; the first draw can happen before that
+      const r = Number.isFinite(st.radius) ? st.radius : 150 + 130 * (st.oil / st.oilMax);
+      st.radius = r;
+      const flick = 1 + Math.sin(st.t * 9) * 0.02;
+      const grd = ctx.createRadialGradient(cx, cy, r * 0.3, cx, cy, r * flick);
+      grd.addColorStop(0, 'rgba(10,5,20,0)');
+      grd.addColorStop(0.75, 'rgba(10,5,20,0.55)');
+      grd.addColorStop(1, 'rgba(10,5,20,0.97)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, 960, 540);
+      ctx.fillStyle = 'rgba(10,5,20,0.985)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * flick, 0, Math.PI * 2);
+      ctx.rect(-10, -10, 985, 565);
+      ctx.fill('evenodd');
+      // warm core of the lantern
+      const warm = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.55);
+      warm.addColorStop(0, 'rgba(255,211,165,0.10)');
+      warm.addColorStop(1, 'rgba(255,211,165,0)');
+      ctx.fillStyle = warm;
+      ctx.fillRect(0, 0, 960, 540);
 
-  function tile(sk, x, y) {
-    if (x < 0 || y < 0 || x >= sk.w || y >= sk.h) return '#';
-    return sk.rows[y][x];
+      // oil + items
+      const frac = st.oil / st.oilMax;
+      ctx.fillStyle = PAL.ink; ctx.fillRect(330, 508, 240, 12);
+      ctx.fillStyle = frac > 0.25 ? PAL.peach : PAL.rose;
+      ctx.fillRect(330, 508, 240 * Math.max(0, frac), 12);
+      ctx.strokeStyle = PAL.lampp; ctx.strokeRect(329.5, 507.5, 241, 13);
+      ctx.font = f(11, 'bold'); ctx.fillStyle = PAL.laver;
+      ctx.fillText('LANTERN OIL', 240, 519);
+      ctx.font = f(11); ctx.fillStyle = PAL.laver;
+      ctx.fillText(`SOUL ${st.hasSoul ? '◆' : '-'}  FUEL ${st.hasFuel ? '◆' : '-'}`, 600, 519);
+    },
+  });
+
+  s.items = [
+    { kind: 'soul', x: T(59) + 10, y: T(6) + 10, effect: (gg, st) => { st.hasSoul = true; Sfx.good(); } },
+    { kind: 'fuel', x: T(11), y: T(32) - 16, effect: (gg, st) => { st.hasFuel = true; Sfx.good(); } },
+    { kind: 'shard', x: T(9), y: T(28) - 16 },
+    { kind: 'shard', x: T(35), y: T(20) - 16 },
+    { kind: 'shard', x: T(55), y: T(6) + 4 },
+    { kind: 'shard', x: T(78), y: T(26) + 4 },
+  ];
+  const oilSpots = [
+    [20, 29], [27, 25], [35, 19], [44, 13], [52, 7],
+    [10, 28], [4, 31], [70, 28], [84, 28],
+  ];
+  for (const [tx, ty] of oilSpots) s.items.push({ kind: 'oil', x: T(tx) + 16, y: T(ty) - 10, power: 26 });
+
+  s.checkpoints = [
+    { x: T(6), y: T(28), on: true },
+    { x: T(28) + 16, y: T(24), on: false },
+    { x: T(55) + 16, y: T(7), on: false },
+    { x: T(70) + 16, y: T(32), on: false },
+  ];
+  s.movers = [
+    makeMover(T(44), T(30), 96, 14, { dx: 160, speed: 0.45, phase: 0.15 }),
+    makeMover(T(43), T(17), 96, 14, { dy: -224, speed: 0.32, phase: 0.5 }),
+  ];
+  return s;
+}
+
+function mkShadow(x, y) {
+  return { x, y, hx: x, hy: y, tx: null, ty: null, retarget: 0, ph: 0 };
+}
+
+function drawShadow(ctx, sh, st, layer) {
+  const x = sh.x - st.cam.x, y = sh.y - st.cam.y;
+  const dp = Math.hypot(st.p.x - sh.x, (st.p.y - 15) - sh.y);
+  if (dp > st.radius + 90) return;
+  ctx.globalAlpha = 0.82;
+  ctx.fillStyle = PAL.ink;
+  const wob = Math.sin(sh.ph) * 2;
+  ctx.beginPath(); ctx.ellipse(x, y + wob, 13, 16, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = PAL.purple;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(x, y + wob, 13, 16, 0, 0, 7); ctx.stroke();
+  ctx.lineWidth = 1;
+  // two pale eyes
+  ctx.fillStyle = PAL.laver;
+  ctx.beginPath(); ctx.arc(x - 4, y - 3 + wob, 1.6, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 4, y - 3 + wob, 1.6, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawCaveBg(ctx, st) {
+  const grad = ctx.createLinearGradient(0, 0, 0, 540);
+  grad.addColorStop(0, '#0f0820');
+  grad.addColorStop(0.7, '#150c26');
+  grad.addColorStop(1, '#120a1f'); // chasms darker than tile faces
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 960, 540);
+  // stalactites
+  ctx.fillStyle = '#1a0f2a';
+  const off = (st.cam.x * 0.25) % 300;
+  for (let i = -1; i < 5; i++) {
+    const x = i * 300 - off;
+    ctx.beginPath();
+    ctx.moveTo(x, 0); ctx.lineTo(x + 150, 0); ctx.lineTo(x + 100, 90 + (i % 2) * 50); ctx.lineTo(x + 40, 40);
+    ctx.closePath(); ctx.fill();
   }
-  function buildPlateList() {
-    s.plateList = [];
-    for (let y = 0; y < state.soko.h; y++) for (let x = 0; x < state.soko.w; x++) {
-      if (state.soko.rows[y][x] === 'O') s.plateList.push([x, y]);
-    }
+  // faint fungal glow
+  for (let i = 0; i < 8; i++) {
+    const x = (i * 233 - st.cam.x * 0.4) % 1100;
+    const y = 120 + (i * 97) % 320;
+    ctx.globalAlpha = 0.10 + Math.sin(st.t + i) * 0.05;
+    ctx.fillStyle = i % 2 ? PAL.pink : PAL.laver;
+    ctx.beginPath(); ctx.arc(x < 0 ? x + 1100 : x, y, 24, 0, 7); ctx.fill();
   }
-  const RIDDLE_OPTS = [
-    'The one who never moves',
-    'The one who moves all',
-    'The one who remembers',
+  ctx.globalAlpha = 1;
+}
+
+// ================================================================ WORLD 3
+// THE TOWER OF CAESAR - a vertical platformer. Climb six floors, set four
+// seals, answer the statue's riddle, reach the beacon housing.
+const TFLOOR = [98, 82, 66, 50, 34, 18];
+const TLEVER = [
+  { name: 'FLAME', x: 25, floor: 82, col: PAL.hot },
+  { name: 'MOON', x: 25, floor: 66, col: PAL.laver },
+  { name: 'FROST', x: 25, floor: 50, col: PAL.cream },
+  { name: 'STAR', x: 25, floor: 34, col: PAL.peach },
+];
+
+export function towerLevel(g) {
+  const W = 30, H = 102;
+  const world = new WorldGrid(W, H);
+  world.rect(0, 0, W, 2);            // tower ceiling
+  world.rect(0, 2, 1, H - 2);        // left wall
+  world.rect(W - 1, 2, 1, H - 2);    // right wall
+  world.rect(0, 98, W, 4);           // foundation
+
+  // one-way stone girders: every floor above the ground
+  for (let i = 1; i < TFLOOR.length; i++) world.rect(1, TFLOOR[i], W - 2, 1, 2);
+  // climbing shafts between each pair of floors
+  for (let i = 0; i < TFLOOR.length - 1; i++) buildShaft(world, TFLOOR[i], TFLOOR[i + 1]);
+
+  // room hazards, kept clear of the shaft landings at columns 5-14
+  for (let x = 18; x <= 19; x++) world.set(x, 81, 3);   // floor 1 spikes
+  world.clear(19, 66, 3, 1);                            // floor 2 pit
+  world.clear(18, 50, 5, 1);                            // floor 3 crumbling bridge
+  world.rect(18, 50, 5, 1, 4);
+  for (let x = 18; x <= 19; x++) world.set(x, 33, 3);   // floor 4 spikes
+
+  // summit gate, sealing the beacon housing
+  world.rect(17, 12, 1, 6, 1);
+
+  const levers = TLEVER.map((l) => Object.assign({ on: false, y: T(l.floor) }, l));
+
+  const s = makePlatformLevel(g, {
+    title: 'WORLD 3 - THE TOWER OF CAESAR',
+    objective: 'Seals 0/4 - climb the tower',
+    brief: [
+      'WASD / Arrows - run   -   SPACE - jump (twice for thrusters)   -   E - use / read / pull   -   SHIFT - sprint',
+      'Climb six floors. On each, cross the hazard and pull the seal lever at the far right. Checkpoints sit beside each landing.',
+      'At the summit, Caesar\u2019s statue asks one riddle. Answer it, the gate opens, and the beacon housing is yours.',
+    ],
+    briefTopics: [
+      { label: 'CYU: What is this tower?', lines: [
+        { who: 'CYU', text: 'A power relay, older than the colony that built it. Six floors of very sincere stonework. The beacon at the top is what I need for the burn.' },
+        { who: 'CYU', text: 'It also has opinions. The seals are not decoration - each one feeds the gate.' },
+      ] },
+      { label: 'CYU: Who was Caesar?', lines: [
+        { who: 'CYU', text: 'The colony\u2019s first governor, and a bit of a dramatist. He built a tower so tall the sunrise would hit it first, then filled it with riddles so nobody could say he made it easy.' },
+        { who: 'YOU', text: 'That is a lot of effort to be mysterious.', choices: [
+          { label: 'I respect it a little.', flag: 'tower_a' },
+          { label: 'That is deeply annoying.', flag: 'tower_b' },
+        ] },
+        { who: 'CYU', text: 'He also named the moon after himself. Twice. There are two moons called Caesar up there and he is not on either of them.' },
+      ] },
+      { label: 'CYU: What are the seals?', lines: [
+        { who: 'CYU', text: 'Flame, moon, frost, star - the four things the first settlers feared and needed. Pull one and the floor hums. Pull all four and the summit gate wakes up.' },
+        { who: 'CYU', text: 'The levers are at the far right of every floor. Yes, past the spikes. No, I did not design this tower.' },
+      ] },
+      { label: 'CYU: Are you alright?', lines: [
+        { who: 'CYU', text: 'My reactor is at eleven percent, my hull is open to vacuum in two places, and I have been talking to a sleeping human for a hundred and forty million lightyears.' },
+        { who: 'CYU', text: 'I am excellent. Why do you ask?' },
+        { who: 'YOU', text: '...', choices: [
+          { label: 'No reason. Keep talking.', flag: 'tower_c' },
+          { label: 'Because I am glad you are here.', flag: 'tower_d' },
+        ] },
+        { who: 'CYU', text: 'Logged. Under "things the captain said at altitude".' },
+      ] },
+    ],
+    world,
+    theme: {
+      block: '#2a1a42', inner: '#1a0f2a', top: '#5d3a86', speck: '#8657b8',
+      plat: '#3f2660', platTop: '#8657b8', spike: '#b490d6',
+      crumble: '#3f2660', crack: '#ff9ecb',
+    },
+    spawn: { x: T(15) + 16, y: T(98) },
+    hearts: g.save.hearts(),
+    goal: { x: T(24), y: T(18), active: false, label: 'BEACON' },
+    bg: drawTowerBg,
+    drawBelow: drawTowerProps,
+    drawMid: (ctx, st, cam) => drawTowerMid(ctx, st, cam, levers),
+    onUpdate: (st) => {
+      st.objective = `Seals ${st.seals || 0}/4 - ${st.gateOpen ? 'reach the beacon' : 'climb the tower'}`;
+      if (st.seals >= 4 && !st.sealsDone) {
+        st.sealsDone = true;
+        st.flash('FOUR SEALS SET - THE SUMMIT');
+        Sfx.good();
+      }
+    },
+    onGoal: (st) => {
+      if (st.done) return;
+      st.done = true;
+      g.dialogue([
+        { who: 'CYU', text: 'Beacon housing open. That is the last piece - plating, fuel, cells and a lighthouse. The EXON-1 can fly.' },
+        { who: 'CYU', text: 'Come back down, captain. I will leave the porch light on. ...I will miss the purple a little. Do not tell anyone.' },
+      ], () => { g.complete('tower'); });
+    },
+    onOverlay: (ctx, st) => drawTowerHud(ctx, st, levers),
+  });
+
+  s.seals = 0;
+
+  s.items = [
+    { kind: 'shard', x: T(3), y: T(98) - 12 },
+    { kind: 'shard', x: T(14), y: T(80) - 8 },
+    { kind: 'shard', x: T(15), y: T(64) - 8 },
+    { kind: 'shard', x: T(14), y: T(48) - 8 },
+    { kind: 'shard', x: T(14), y: T(32) - 8 },
   ];
 
-  s.draw = (ctx) => {
-    // tower background
-    ctx.fillStyle = PAL.bg0;
-    ctx.fillRect(0, 0, 960, 540);
-    for (let i = 0; i < 40; i++) {
-      ctx.fillStyle = i % 3 === 0 ? PAL.laver : PAL.pink;
-      ctx.globalAlpha = 0.2 + (i % 4) * 0.12;
-      ctx.fillRect(((i * 211) % 960), ((i * 83) % 480), 2, 2);
-    }
-    ctx.globalAlpha = 1;
+  s.checkpoints = [
+    { x: T(15), y: T(98), on: true },
+    { x: T(7), y: T(82), on: false },
+    { x: T(7), y: T(66), on: false },
+    { x: T(7), y: T(50), on: false },
+    { x: T(7), y: T(34), on: false },
+    { x: T(5), y: T(18), on: false },
+  ];
 
-    ctx.textAlign = 'center';
-    ctx.font = f(20, 'bold');
-    ctx.fillStyle = PAL.laver;
-    const roomNames = ['THE HALL OF LEVERS', 'THE COUNTERWEIGHT ROOM', 'AT THE SUMMIT'];
-    const roomDesc = [
-      'Frost before flame, moon after frost, star sleeps last.',
-      'Two counterweights onto two plates. Mind the corners.',
-      'Answer Caesar well.',
-    ];
-    const idx = s.mode === 'levers' ? 0 : s.mode === 'soko' ? 1 : 2;
-    ctx.fillText(roomNames[idx], 480, 70);
-    ctx.font = f(13);
-    ctx.fillStyle = PAL.pink;
-    ctx.fillText('"' + roomDesc[idx] + '"', 480, 92);
-    ctx.textAlign = 'left';
+  s.movers = [
+    makeMover(T(19), T(66), T(3), 14, { dx: T(3), speed: 0.3, phase: 0.15 }),
+  ];
 
-    if (s.mode === 'levers') {
-      // stone platform
-      for (const l of state.levers.L) {
-        ctx.fillStyle = PAL.bg3;
-        ctx.fillRect(l.x - 22, 380, 44, 44);
-        ctx.strokeStyle = PAL.purple;
-        ctx.strokeRect(l.x - 22.5, 380.5, 45, 43);
-        // lever stick
-        ctx.save();
-        ctx.translate(l.x, 400);
-        ctx.rotate(l.pulled ? 0.9 : -0.5);
-        ctx.strokeStyle = PAL.laver;
-        ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, -16); ctx.stroke();
-        ctx.fillStyle = l.pulled ? PAL.hot : PAL.peach;
-        ctx.beginPath(); ctx.arc(0, -16, 5, 0, 7); ctx.fill();
-        ctx.restore();
-        ctx.lineWidth = 1;
-        ctx.font = f(13, 'bold');
-        ctx.fillStyle = PAL.cream;
-        ctx.textAlign = 'center';
-        ctx.fillText(l.name, l.x, 452);
-        ctx.textAlign = 'left';
-        if (l.pulled) {
-          ctx.fillStyle = PAL.hot;
-          ctx.font = f(11, 'bold');
-          ctx.textAlign = 'center';
-          ctx.fillText('OK', l.x, 374);
-          ctx.textAlign = 'left';
+  s.interactables = [
+    { x: T(8), y: T(98), r: 72, label: 'E - READ THE FOUNDATION STONE',
+      use: () => g.dialogue([
+        { who: 'THE STONE', text: 'HERE STOOD CAESAR, FIRST OF THE COLONY. FOUR SEALS RING MY TOWER: THE HEARTH AT THE ROOT, THE TIDE ABOVE IT, THE FROST ABOVE THAT, AND THE STAR AT THE CROWN.' },
+        { who: 'THE STONE', text: 'SET THEM IN THE ORDER OF THE CLIMB AND THE GATE WILL KNOW YOUR NAME. OR AT LEAST YOUR FOOTWORK.' },
+        { who: 'CYU', text: 'Helpful. And slightly smug for a rock.' },
+      ]) },
+    ...[...levers].map((lv) => ({
+      x: T(lv.x) + 16, y: T(lv.floor), r: 68,
+      label: 'E - PULL THE ' + lv.name + ' SEAL',
+      use: (st) => {
+        if (lv.on) {
+          g.dialogue([{ who: 'CYU', text: lv.name + ' is already lit. ' + st.seals + ' of 4 seals are burning. Keep climbing, captain.' }]);
+          return;
         }
-      }
-      // poem inscription
-      ctx.font = f(14);
-      ctx.fillStyle = PAL.laver;
-      wrapAll(ctx, '"Wake the FROST before the FLAME; the MOON follows the frost; the STAR sleeps last at heaven\u2019s door."', 380, 150, 260);
-      wrapAll(ctx, 'Inscription: "The mountain does not move - yet the tower climbs it."', 680, 150, 240);
-
-      // player
-      if (s.px !== null && s.px !== undefined) {
-        ctx.fillStyle = PAL.cream;
-        ctx.beginPath(); ctx.arc(s.px, 382, 10, 0, 7); ctx.fill();
-        ctx.fillStyle = PAL.bg2;
-        ctx.beginPath(); ctx.arc(s.px - 3, 378, 5, 0, 7); ctx.fill();
-      }
-      if (state.levers.done && state.levers.lift > 0) {
-        ctx.fillStyle = PAL.hot;
-        ctx.globalAlpha = state.levers.lift;
-        ctx.fillRect(440, 480, 80, 8);
-        ctx.globalAlpha = 1;
-        ctx.font = f(15, 'bold');
-        ctx.fillStyle = PAL.peach;
-        ctx.textAlign = 'center';
-        ctx.fillText('SPACE - step into the lifting room', 480, 500);
-        ctx.textAlign = 'left';
-      }
-    } else if (s.mode === 'soko') {
-      const sk = state.soko;
-      for (let y = 0; y < sk.h; y++) for (let x = 0; x < sk.w; x++) {
-        const c = sk.rows[y][x], px = sk.ox + x * sk.ts, py = sk.oy + y * sk.ts;
-        if (c === '#') { ctx.fillStyle = PAL.bg2; ctx.fillRect(px, py, sk.ts, sk.ts); ctx.strokeStyle = PAL.bg3; ctx.strokeRect(px + 2.5, py + 2.5, sk.ts - 5, sk.ts - 5); }
-        else {
-          ctx.fillStyle = PAL.bg1; ctx.fillRect(px, py, sk.ts, sk.ts);
-          if (c === 'O') {
-            ctx.fillStyle = PAL.bg2;
-            ctx.beginPath(); ctx.arc(px + sk.ts / 2, py + sk.ts / 2, sk.ts * 0.28, 0, 7); ctx.fill();
-            ctx.strokeStyle = PAL.hot;
-            ctx.beginPath(); ctx.arc(px + sk.ts / 2, py + sk.ts / 2, sk.ts * 0.2, 0, 7); ctx.stroke();
-          }
-        }
-      }
-      for (const c of s.crateList || []) {
-        const px = sk.ox + c.cx * sk.ts, py = sk.oy + c.cy * sk.ts;
-        ctx.fillStyle = s.plateList.some((p) => p[0] === c.cx && p[1] === c.cy) ? PAL.peach : PAL.bg3;
-        ctx.fillRect(px + 5, py + 5, sk.ts - 10, sk.ts - 10);
-        ctx.strokeStyle = PAL.laver;
-        ctx.strokeRect(px + 5.5, py + 5.5, sk.ts - 11, sk.ts - 11);
-        ctx.fillStyle = PAL.bg1;
-        ctx.fillRect(px + 12, py + 12, sk.ts - 24, 6);
-      }
-      // player
-      if (s.sx != null) {
-        const px = sk.ox + s.sx * sk.ts, py = sk.oy + s.sy * sk.ts;
-        ctx.fillStyle = PAL.cream;
-        ctx.beginPath(); ctx.arc(px + sk.ts / 2, py + sk.ts / 2, sk.ts * 0.24, 0, 7); ctx.fill();
-        ctx.fillStyle = PAL.bg2;
-        ctx.beginPath(); ctx.arc(px + sk.ts / 2 - 3, py + sk.ts / 2 - 3, sk.ts * 0.13, 0, 7); ctx.fill();
-      }
-      ctx.font = f(12);
-      ctx.fillStyle = PAL.laver;
-      ctx.fillText('ARROWS/WASD: push crates onto the two pressure plates.  R: reset crate positions.', 20, 520);
-    } else {
-      // summit: Caesar robed figure + riddle
-      const bob = Math.sin(s.t * 2) * 3;
-      ctx.fillStyle = PAL.purple;
-      ctx.beginPath();
-      ctx.moveTo(480 + -34, 320 + bob);
-      ctx.quadraticCurveTo(480, 200 + bob, 480 + 34, 320 + bob);
-      ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = PAL.lampp;
-      ctx.stroke();
-      ctx.fillStyle = PAL.bg0;
-      ctx.beginPath(); ctx.arc(480, 250 + bob, 15, 0, 7); ctx.fill();
-      ctx.fillStyle = PAL.peach;
-      ctx.beginPath(); ctx.arc(480, 250 + bob, 9, 0, 7); ctx.fill();
-      // tiny crown
-      ctx.fillStyle = PAL.hot;
-      for (let i = -1; i <= 1; i++) {
-        ctx.fillRect(480 + i * 8 - 2, 236 + bob, 4, 6);
-      }
-      // plating award
-      ctx.fillStyle = PAL.peach;
-      ctx.fillRect(600, 260, 26, 34);
-      ctx.strokeStyle = PAL.laver;
-      ctx.strokeRect(600.5, 260.5, 25, 33);
-      ctx.font = f(12, 'bold'); ctx.fillStyle = PAL.laver;
-      ctx.fillText('HULL PLATING', 613, 320);
-
-      if (s.riddlePhase === 'ask') {
-        ctx.font = f(17);
-        ctx.fillStyle = PAL.cream;
-        ctx.textAlign = 'center';
-        wrapCentered(ctx, 'Caesar: "Three companions carried this tower up: one never moves, one moves all, one remembers. Which am I?"', 480, 380, 620);
-        ctx.textAlign = 'left';
-        RIDDLE_OPTS.forEach((o, i) => {
-          const sel = i === (s.riddleChoice || 0);
-          ctx.fillStyle = sel ? PAL.hot : PAL.laver;
-          ctx.textAlign = 'center';
-          ctx.fillText((sel ? '> ' : '') + `[${i + 1}] ${o}`, 480, 416 + i * 26);
-          ctx.textAlign = 'left';
-        });
-        if (!s.riddleSeenHint) {
-          s.riddleSeenHint = true;
-          const opening = () => {};
-          g.dialogue([
-            { who: 'CAESAR', text: 'So the little drifter climbs my whole tower! You want the hull plating for your cracked ship, yes? Then answer me one thing...' },
-            { who: 'CYU', text: 'The inscriptions in the rooms below are clues. Room I walls said the mountain does not move, yet the tower climbs it.' },
-          ]);
-        }
-      }
-    }
-
-    // room tracker
-    ctx.font = f(13, 'bold');
-    ctx.fillStyle = PAL.laver;
-    ctx.fillText('ROOMS: ' + (s.rooms.join(' ') || '-'), 20, 542);
-
-    function wrapAll(c, text, x, y, maxW) {
-      c.fillStyle = PAL.laver;
-      const lines = wrapText(c, text, maxW);
-      let ty = y;
-      for (const ln of lines) { c.fillText(ln, x, ty); ty += 20; }
-    }
-    function wrapCentered(c, text, cx, y, maxW) {
-      c.fillStyle = PAL.cream;
-      const lines = wrapText(c, text, maxW);
-      let ty = y;
-      for (const ln of lines) { c.fillText(ln, cx, ty); ty += 24; }
-    }
-  };
+        lv.on = true;
+        st.seals++;
+        Sfx.good();
+        st.flash(lv.name + ' SEAL SET - ' + st.seals + '/4');
+        g.dialogue([{ who: 'CYU', text: LEVER_LINES[lv.name] }]);
+      },
+    })),
+    { x: T(8), y: T(18), r: 80, label: "E - CAESAR'S STATUE",
+      use: (st) => askCaesar(g, st) },
+    { x: T(3), y: T(18), r: 64, label: 'E - SERVICE VENT (DOWN)',
+      use: (st) => {
+        st.p.x = T(15); st.p.y = T(98);
+        st.p.vx = 0; st.p.vy = 0;
+        st.spawnPt = { x: T(15), y: T(98) };
+        st.flash('THE VENT DROPS YOU AT THE ROOT');
+        Sfx.blip();
+      } },
+  ];
 
   return s;
+}
+
+const LEVER_LINES = {
+  FLAME: 'The hearth seal. The tower remembers warm hands. One floor down, five to go - well, up. You know what I mean.',
+  MOON: 'Tide seal lit. The old colonists used to read the moons like a calendar. Mostly they read "run".',
+  FROST: 'Frost seal. Careful on the stone from here - the tower gets cold near the crown.',
+  STAR: 'The star seal. All four are burning, captain. The summit gate should be awake. Go and be clever at it.',
+};
+
+function buildShaft(world, lowerY, upperY) {
+  let side = 0, n = 0;
+  for (let y = lowerY - 2; y > upperY; y -= 2) {
+    const kind = n % 5 === 4 ? 4 : 2; // one-way: jump up through them, land on top
+    world.rect(side === 0 ? 5 : 16, y, 10, 1, kind);
+    side ^= 1;
+    n++;
+  }
+}
+
+function askCaesar(g, st) {
+  if (st.gateOpen) {
+    g.dialogue([{ who: 'CAESAR', text: 'The gate is open, little climber. The sky is on the other side. Go and take it.' }]);
+    return;
+  }
+  if (st.seals < 4) {
+    g.dialogue([
+      { who: 'CAESAR', text: `Four seals ring my tower. ${st.seals} burn for you. The gate does not answer a half-made key.` },
+      { who: 'CYU', text: 'He is right. The levers are on the floors below - far right, past the spikes. The service vent at the edge will take you back to the root.' },
+    ]);
+    return;
+  }
+  st.answer = null;
+  g.onChoice = (flag) => { if (flag && flag.startsWith('tower_')) st.answer = flag; };
+  g.dialogue([
+    { who: 'CAESAR', text: 'So. The little climber reaches the crown. Four seals burn for you, and still the gate wants one answer.' },
+    { who: 'THE INSCRIPTION', text: 'I have no feet, yet I stand. I have no hands, yet I hold this tower. I was here before the first stone, and I will be here after the last. What am I?' },
+    { who: 'YOU', text: '...', choices: [
+      { label: 'The mountain.', flag: 'tower_ok' },
+      { label: 'The wind.', flag: 'tower_no' },
+      { label: 'The star.', flag: 'tower_no' },
+    ] },
+    { who: 'CAESAR', text: 'Then the gate remembers you.' },
+  ], () => {
+    g.onChoice = null;
+    if (st.answer === 'tower_ok') openSealGate(g, st);
+    else g.dialogue([{ who: 'CAESAR', text: 'The stone does not answer. Neither will the gate. Read it again, climber.' }]);
+  });
+}
+
+function openSealGate(g, st) {
+  st.gateOpen = true;
+  st.world.clear(17, 12, 1, 6);
+  st.goal.active = true;
+  st.flash('THE GATE OPENS');
+  Sfx.good();
+  g.dialogue([{ who: 'CYU', text: 'Gate is open. Beacon housing is right there. Go on, captain - I will keep the channel open.' }]);
+}
+
+// ---------------- tower art ----------------
+function drawTowerBg(ctx, st, cam) {
+  const grd = ctx.createLinearGradient(0, 0, 0, 540);
+  grd.addColorStop(0, '#0d0719');
+  grd.addColorStop(0.55, '#150c26');
+  grd.addColorStop(1, '#0f0820'); // darker than the tile inner face, so shafts/pits read as drops
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 960, 540);
+
+  // tall arched windows, parallax behind the tower
+  const off = (cam.y * 0.4) % 360;
+  for (let i = -1; i < 3; i++) {
+    const y = 60 - off + i * 360;
+    ctx.fillStyle = 'rgba(93,58,134,0.16)';
+    ctx.beginPath();
+    ctx.moveTo(392, y + 250);
+    ctx.lineTo(392, y + 80);
+    ctx.quadraticCurveTo(480, y - 20, 568, y + 80);
+    ctx.lineTo(568, y + 250);
+    ctx.closePath(); ctx.fill();
+    for (let k = 0; k < 12; k++) {
+      ctx.fillStyle = k % 3 === 0 ? PAL.peach : PAL.laver;
+      ctx.globalAlpha = 0.22 + ((k * 7) % 5) * 0.08;
+      ctx.fillRect(404 + (k * 61) % 150, y + 44 + (k * 47) % 180, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // brick courses and joints
+  ctx.strokeStyle = 'rgba(93,58,134,0.13)';
+  const boff = cam.y % 64;
+  for (let y = -boff; y < 560; y += 64) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(960, y); ctx.stroke();
+    const stagger = Math.floor((y + cam.y) / 64) % 2 ? 40 : 0;
+    for (let x = stagger; x < 960; x += 80) {
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 64); ctx.stroke();
+    }
+  }
+
+  // dark buttresses at the walls
+  ctx.fillStyle = 'rgba(13,7,25,0.5)';
+  ctx.fillRect(0, 0, 30, 540);
+  ctx.fillRect(930, 0, 30, 540);
+}
+
+function drawTowerProps(ctx, st, cam) {
+  for (let i = 1; i < TFLOOR.length; i++) {
+    const fy = T(TFLOOR[i]) - cam.y;
+    if (fy < -40 || fy > 580) continue;
+
+    // banner on the right wall
+    ctx.fillStyle = PAL.purple;
+    ctx.globalAlpha = 0.6 + Math.sin(st.t * 1.4 + i) * 0.06;
+    ctx.fillRect(906, fy - 168, 24, 126);
+    ctx.fillStyle = PAL.hot;
+    ctx.fillRect(906, fy - 168, 24, 7);
+    ctx.beginPath();
+    ctx.moveTo(906, fy - 42); ctx.lineTo(918, fy - 24); ctx.lineTo(930, fy - 42);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = PAL.peach;
+    ctx.beginPath(); ctx.arc(918, fy - 110, 6, 0, 7); ctx.fill();
+
+    // torch on the left wall
+    const fl = 0.7 + Math.sin(st.t * 9 + i * 2) * 0.22;
+    ctx.globalAlpha = 0.2 * fl;
+    ctx.fillStyle = PAL.peach;
+    ctx.beginPath(); ctx.arc(46, fy - 62, 44, 0, 7); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = PAL.lampp;
+    ctx.fillRect(42, fy - 56, 8, 18);
+    ctx.fillStyle = PAL.peach;
+    ctx.beginPath();
+    ctx.moveTo(46, fy - 78 - fl * 6);
+    ctx.quadraticCurveTo(55, fy - 62, 46, fy - 54);
+    ctx.quadraticCurveTo(37, fy - 62, 46, fy - 78 - fl * 6);
+    ctx.fill();
+
+    // chains hanging from the girder above
+    ctx.strokeStyle = 'rgba(134,87,184,0.3)';
+    ctx.beginPath();
+    for (let k = 0; k < 3; k++) {
+      const x = 140 + k * 300;
+      ctx.moveTo(x, fy - 200);
+      ctx.lineTo(x, fy - 70);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawTowerMid(ctx, st, cam, levers) {
+  drawGate(ctx, st, cam);
+  drawStatue(ctx, st, cam);
+
+  // service vent grate
+  const vx = T(3) - cam.x, vy = T(18) - cam.y;
+  ctx.fillStyle = PAL.bg1;
+  ctx.fillRect(vx - 20, vy - 8, 40, 8);
+  ctx.strokeStyle = PAL.purple;
+  ctx.strokeRect(vx - 19.5, vy - 7.5, 39, 7);
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath(); ctx.moveTo(vx - 20 + i * 10, vy - 8); ctx.lineTo(vx - 20 + i * 10, vy); ctx.stroke();
+  }
+
+  for (const lv of levers) drawLever(ctx, lv, st, cam);
+}
+
+function drawLever(ctx, lv, st, cam) {
+  const x = T(lv.x) + 16 - cam.x;
+  const y = T(lv.floor) - cam.y;
+  if (y < -120 || y > 620) return;
+
+  const glow = lv.on ? 0.45 + Math.sin(st.t * 4 + lv.floor) * 0.18 : 0.07;
+  ctx.fillStyle = lv.col;
+  ctx.globalAlpha = glow;
+  ctx.beginPath(); ctx.arc(x, y - 54, 30, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = PAL.bg2;
+  ctx.fillRect(x - 18, y - 26, 36, 26);
+  ctx.fillStyle = PAL.bg1;
+  ctx.fillRect(x - 13, y - 22, 26, 22);
+  ctx.strokeStyle = lv.on ? lv.col : PAL.purple;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 22);
+  ctx.lineTo(x + (lv.on ? 16 : -16), y - 52);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.fillStyle = lv.on ? lv.col : PAL.laver;
+  ctx.beginPath(); ctx.arc(x + (lv.on ? 16 : -16), y - 52, 5, 0, 7); ctx.fill();
+
+  drawRune(ctx, lv.name, x, y - 74, lv.on ? lv.col : PAL.purple, st.t);
+
+  ctx.font = f(9, 'bold');
+  ctx.textAlign = 'center';
+  ctx.fillStyle = lv.on ? lv.col : PAL.laver;
+  ctx.fillText(lv.name, x, y + 14);
+  ctx.textAlign = 'left';
+}
+
+function drawRune(ctx, name, x, y, col, t) {
+  ctx.strokeStyle = col;
+  ctx.fillStyle = col;
+  ctx.lineWidth = 2;
+  if (name === 'FLAME') {
+    ctx.beginPath();
+    ctx.moveTo(x, y - 11);
+    ctx.quadraticCurveTo(x + 11, y + 2, x, y + 10);
+    ctx.quadraticCurveTo(x - 11, y + 2, x, y - 11);
+    ctx.fill();
+  } else if (name === 'MOON') {
+    ctx.beginPath();
+    ctx.arc(x, y, 9, 0, 7);
+    ctx.fill();
+    ctx.fillStyle = PAL.bg0;
+    ctx.beginPath(); ctx.arc(x + 5, y - 2, 8, 0, 7); ctx.fill();
+  } else if (name === 'FROST') {
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI;
+      ctx.moveTo(x - Math.cos(a) * 11, y - Math.sin(a) * 11);
+      ctx.lineTo(x + Math.cos(a) * 11, y + Math.sin(a) * 11);
+    }
+    ctx.stroke();
+  } else {
+    const p = 0.75 + Math.sin(t * 3) * 0.25;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 12 * p); ctx.lineTo(x + 4, y - 4);
+    ctx.lineTo(x + 12 * p, y); ctx.lineTo(x + 4, y + 4);
+    ctx.lineTo(x, y + 12 * p); ctx.lineTo(x - 4, y + 4);
+    ctx.lineTo(x - 12 * p, y); ctx.lineTo(x - 4, y - 4);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.lineWidth = 1;
+}
+
+function drawStatue(ctx, st, cam) {
+  const x = T(8) - cam.x, y = T(18) - cam.y;
+  const awake = st.seals >= 4;
+
+  ctx.fillStyle = '#241536';
+  ctx.beginPath();
+  ctx.moveTo(x - 36, y);
+  ctx.lineTo(x - 36, y - 26);
+  ctx.lineTo(x - 22, y - 38);
+  ctx.lineTo(x - 21, y - 62);
+  ctx.quadraticCurveTo(x - 22, y - 92, x, y - 95);
+  ctx.quadraticCurveTo(x + 22, y - 92, x + 21, y - 62);
+  ctx.lineTo(x + 27, y - 42);
+  ctx.lineTo(x + 36, y - 36);
+  ctx.lineTo(x + 36, y);
+  ctx.closePath(); ctx.fill();
+
+  ctx.strokeStyle = PAL.purple;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.lineWidth = 1;
+
+  // crown of small points
+  ctx.fillStyle = PAL.lampp;
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath();
+    ctx.moveTo(x + i * 8, y - 94);
+    ctx.lineTo(x + i * 8 + 3, y - 108 - Math.abs(i) * -3);
+    ctx.lineTo(x + i * 8 + 6, y - 94);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // eyes
+  ctx.fillStyle = awake ? PAL.hot : PAL.bg3;
+  if (awake) ctx.globalAlpha = 0.55 + Math.sin(st.t * 4) * 0.25;
+  ctx.fillRect(x - 11, y - 78, 8, 3);
+  ctx.fillRect(x + 3, y - 78, 8, 3);
+  ctx.globalAlpha = 1;
+
+  // plaque at the base
+  ctx.fillStyle = PAL.bg1;
+  ctx.fillRect(x - 26, y - 20, 52, 14);
+  ctx.strokeStyle = awake ? PAL.peach : PAL.purple;
+  ctx.strokeRect(x - 25.5, y - 19.5, 51, 13);
+  ctx.font = f(8, 'bold');
+  ctx.textAlign = 'center';
+  ctx.fillStyle = awake ? PAL.peach : PAL.laver;
+  ctx.fillText('ASK', x, y - 9);
+  ctx.textAlign = 'left';
+}
+
+function drawGate(ctx, st, cam) {
+  const x = 17 * TS + 16 - cam.x;
+  const y0 = 12 * TS - cam.y, y1 = 18 * TS - cam.y;
+  if (st.gateOpen) {
+    const grd = ctx.createLinearGradient(x - 50, 0, x + 50, 0);
+    grd.addColorStop(0, 'rgba(255,211,165,0)');
+    grd.addColorStop(0.5, 'rgba(255,211,165,0.20)');
+    grd.addColorStop(1, 'rgba(255,211,165,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(x - 50, y0 - 40, 100, y1 - y0 + 40);
+    ctx.strokeStyle = PAL.peach;
+    ctx.globalAlpha = 0.5 + Math.sin(st.t * 3) * 0.15;
+    ctx.beginPath();
+    ctx.moveTo(x - 24, y0 - 40); ctx.lineTo(x - 24, y0);
+    ctx.moveTo(x + 24, y0 - 40); ctx.lineTo(x + 24, y0);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  } else {
+    ctx.fillStyle = 'rgba(255,158,203,0.09)';
+    ctx.fillRect(x - 30, y0, 60, y1 - y0);
+    ctx.strokeStyle = PAL.rose;
+    ctx.globalAlpha = 0.35 + Math.sin(st.t * 2) * 0.12;
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const yy = y0 + 22 + i * 46;
+      ctx.moveTo(x - 11, yy); ctx.lineTo(x, yy + 11); ctx.lineTo(x + 11, yy);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.font = f(9, 'bold');
+    ctx.textAlign = 'center';
+    ctx.fillStyle = PAL.rose;
+    ctx.fillText('SEALED', x, y0 - 12);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawTowerHud(ctx, st, levers) {
+  const top = 84, h = 400, x = 924;
+  const base = T(98), crown = T(18);
+  const frac = Math.max(0, Math.min(1, (base - st.p.y) / (base - crown)));
+
+  // panel sits in the tower's outer-wall strip (x 846-940), clear of the seal levers at x 800-832
+  ctx.fillStyle = 'rgba(12,6,24,0.86)';
+  ctx.fillRect(846, top - 10, 94, h + 20);
+  ctx.strokeStyle = PAL.purple;
+  ctx.strokeRect(846.5, top - 9.5, 93, h + 19);
+  ctx.fillStyle = PAL.bg2;
+  ctx.fillRect(x - 2, top, 4, h);
+  ctx.fillStyle = PAL.peach;
+  ctx.fillRect(x - 2, top + h * (1 - frac), 4, h * frac);
+
+  for (let i = 0; i < TFLOOR.length; i++) {
+    const fy = top + h * ((base - T(TFLOOR[i])) / (base - crown));
+    ctx.fillStyle = i === 0 || i === TFLOOR.length - 1 ? PAL.cream : PAL.laver;
+    ctx.fillRect(x - 8, fy - 1, 16, 2);
+  }
+
+  ctx.font = f(8, 'bold');
+  ctx.textAlign = 'center';
+  ctx.fillStyle = PAL.laver;
+  ctx.fillText('CROWN', x, top - 16);
+  ctx.fillText('ROOT', x, top + h + 18);
+
+  // four seals, lit as they are pulled
+  ctx.textAlign = 'left';
+  ctx.font = f(8, 'bold');
+  ctx.fillStyle = PAL.laver;
+  ctx.fillText('SEALS', 854, top + 8);
+  levers.forEach((lv, i) => {
+    const sy = top + 28 + i * 22;
+    ctx.globalAlpha = lv.on ? 1 : 0.3;
+    ctx.fillStyle = lv.on ? lv.col : PAL.purple;
+    ctx.beginPath();
+    ctx.moveTo(866, sy - 6); ctx.lineTo(872, sy); ctx.lineTo(866, sy + 6); ctx.lineTo(860, sy);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.font = f(7, 'bold');
+    ctx.fillStyle = lv.on ? lv.col : PAL.purple;
+    ctx.fillText(lv.name, 877, sy + 3);
+  });
 }
