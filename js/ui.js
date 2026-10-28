@@ -159,10 +159,12 @@ export function drawHUD(ctx, g) {
   ctx.textAlign = 'right';
   ctx.fillText(`XP ${g.save.d.xp}`, 800, 17);
   ctx.textAlign = 'left';
-  // mute hint
+  // mute hint / muted indicator (inside the canvas, top strip right)
   ctx.font = fontPx(10);
-  ctx.fillStyle = PAL.purple;
-  ctx.fillText('M: sound', 6, 552);
+  ctx.textAlign = 'right';
+  if (Sfx.muted) { ctx.fillStyle = PAL.rose; ctx.fillText('MUTED (M)', 795, 38); }
+  else { ctx.fillStyle = PAL.purple; ctx.fillText('M', 795, 38); }
+  ctx.textAlign = 'left';
 }
 
 // late import to avoid cycle at module top

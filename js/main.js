@@ -23,7 +23,7 @@ const g = {
     if (!this.keys[k]) this.once[k] = true;
     this.keys[k] = true;
     Sfx.init();
-    if (k === 'm' || k === 'M') Sfx.muted = !Sfx.muted;
+    if ((k === 'm' || k === 'M') && !e.repeat) Sfx.muted = !Sfx.muted;
     if (k === ' ') e.preventDefault();
     if (k.startsWith('Arrow')) e.preventDefault();
   },
@@ -44,7 +44,7 @@ const g = {
 
 // ---------------- level sequence ----------------
 const SEQ = ['intro', 'w1', 'transit1', 'story1', 'maze', 'transit2', 'story2', 'tower', 'ending'];
-const LEVEL_NAMES = { w1: 1, transit1: 2, maze: 3, transit2: 4, tower: 5 };
+const LEVEL_NAMES = { w1: 1, transit1: 2, maze: 4, transit2: 5, tower: 7 };
 const LEVEL_LABEL = [
   '1. The Whisper Wilds (stealth)',
   '2. The First Belt (asteroids)',
@@ -67,7 +67,7 @@ g.complete = (stateName) => {
 };
 
 g.restartLevel = () => {
-  setState(g.stateName, { skipIntroDialogue: true });
+  setState(g.stateName, { noBrief: true, skipIntroDialogue: true });
 };
 
 // ---------------- state constructor ----------------
@@ -96,6 +96,7 @@ function buildLevel(name, opts = {}) {
 
 function setState(name, opts = {}) {
   if (g.state && g.state.cleanup) g.state.cleanup();
+  g.once = {}; // don't leak key presses across states (transit never consumes them)
   g.state = buildLevel(name, opts);
   g.stateName = name;
   g.t = 0;
@@ -169,6 +170,8 @@ function unlockCount() { return Save.d.unlocked; }
 function selectState() {
   let sel = 0;
   const s = { title: 'levels' };
+  // sequence position of each select row (must match jump() below)
+  const routeIdx = { 1: 1, 2: 2, 3: 3, 4: 5, 5: 6 };
   s.update = function () {
     const once = g.consumeKeys();
     if (once['Escape']) { setState('menu'); return; }
@@ -180,7 +183,7 @@ function selectState() {
     drawPlainBg();
     centerText(ctx, 'WORLDS', 60, 30, PAL.cream);
     LEVEL_LABEL.forEach((lb, i) => {
-      const unlocked = i + 1 <= unlockCount();
+      const unlocked = routeIdx[i + 1] <= unlockCount();
       const y = 110 + i * 56;
       const selOn = i === sel;
       panel(ctx, 260, y - 26, 440, 46, unlocked ? PAL.bg1 : PAL.bg0, unlocked ? PAL.purple : PAL.bg2);
@@ -203,10 +206,11 @@ function selectState() {
   function jump(n) {
     // maps level select rows to sequence entry points
     const routes = { 1: 'w1', 2: 'transit1', 3: 'story1', 4: 'transit2', 5: 'story2' };
+    const routeIdx = { 1: 1, 2: 2, 3: 3, 4: 5, 5: 6 }; // sequence position of each row
     Save.load();
     setState(routes[n]);
     // mark reachable sequence context
-    if (n <= 5) Save.d.unlocked = Math.max(Save.d.unlocked, n);
+    Save.d.unlocked = Math.max(Save.d.unlocked, routeIdx[n]);
     Save.persist();
   }
 }
@@ -321,7 +325,7 @@ function launchState() {
     ctx.font = fontPx(14);
     ctx.fillStyle = PAL.laver;
     ctx.textAlign = 'center';
-    ctx.fillText(`LV ${Save.level()}  -  XP ${Save.d.xp}  -  worlds seen: ${Save.d.unlocked}/5  -  time aloft ${fmtTime(Save.d.time)}`, 480, 160);
+    ctx.fillText(`LV ${Save.level()}  -  XP ${Save.d.xp}  -  progress: segment ${Math.min(Save.d.unlocked, 9)} of 9  -  time aloft ${fmtTime(Save.d.time)}`, 480, 160);
     opts.forEach((o, i) => {
       const selOn = i === sel;
       ctx.font = fontPx(selOn ? 20 : 16, 'bold');
@@ -663,15 +667,17 @@ function drawPause(c) {
 // escape handling: pause / unpause / leave states
 addEventListener('keydown', (e) => {
   g.keydown(e);
+  let unpaused = false;
   if (e.key === 'Escape') {
-    if (g.stateName && LEVEL_NAMES[g.stateName] && Dialogue && !Dialogue.active) g.paused = !g.paused;
-    else if (g.paused) g.paused = false;
+    if (g.stateName && LEVEL_NAMES[g.stateName] && Dialogue && !Dialogue.active) { g.paused = !g.paused; unpaused = !g.paused; }
+    else if (g.paused) { g.paused = false; unpaused = true; }
   }
   if (g.paused) {
-    if (e.key === ' ') g.paused = false;
+    if (e.key === ' ') { g.paused = false; unpaused = true; }
     if (e.key === 'r' || e.key === 'R') { g.paused = false; g.restartLevel(); }
     if (e.key === 'q' || e.key === 'Q') { g.paused = false; Save.persist(); setState('menu'); }
   }
+  if (unpaused) g.once = {}; // the resume key press must not leak into the level
 });
 addEventListener('keyup', (e) => g.keyup(e));
 
@@ -690,8 +696,9 @@ function debugJump() {
   if (p) {
     const n = Math.max(1, Math.min(5, parseInt(p, 10)));
     const routes = { 1: 'w1', 2: 'transit1', 3: 'maze', 4: 'transit2', 5: 'tower' };
+    const routeIdx = { 1: 1, 2: 2, 3: 4, 4: 5, 5: 7 }; // sequence position of each level
     Save.load();
-    Save.d.unlocked = Math.max(Save.d.unlocked, n);
+    Save.d.unlocked = Math.max(Save.d.unlocked, routeIdx[n]);
     Save.persist();
     setState(routes[n], { noBrief: true });
     return true;

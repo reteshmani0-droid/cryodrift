@@ -57,6 +57,6 @@ export const Save = {
 
 export function completeLevel(idx) {
   const d = Save.d;
-  if (idx >= d.unlocked) d.unlocked = Math.min(idx + 1, 6);
+  if (idx >= d.unlocked) d.unlocked = Math.min(idx + 1, 8); // 8 = ending reached
   Save.persist();
 }
