@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cryo Drift - a deep-space puzzle RPG (TSA entry)</title>
+<meta name="description" content="Cryo Drift: crash-landed on planet Exxon. Three worlds, one broken ship, and not a single weapon. Sneak, solve, survive." />
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    background: #0f0820;
+    height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    font-family: "Courier New", Consolas, monospace;
+  }
+  canvas {
+    image-rendering: pixelated;
+    background: #0f0820;
+    box-shadow: 0 0 60px rgba(231, 84, 166, 0.25);
+    border-radius: 6px;
+  }
+  noscript { color: #ffe9d6; }
+</style>
+</head>
+<body>
+<noscript>Cryo Drift needs JavaScript. It runs entirely in your browser - no install, no downloads.</noscript>
+<canvas id="c" width="960" height="540"></canvas>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

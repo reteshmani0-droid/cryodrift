@@ -1,0 +1,7 @@
+{
+  "name": "cryodrift",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cryo Drift - deep-space puzzle RPG (TSA entry). Pure ES modules + Canvas, no dependencies."
+}
